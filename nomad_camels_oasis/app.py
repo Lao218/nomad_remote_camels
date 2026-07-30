@@ -156,6 +156,17 @@ protocol.addEventListener('change',()=>{browserPlots=[];renderPlotTable();browse
 run.addEventListener('click',()=>{const automatic=browserPlots.filter(plot=>plot.shown&&plot.clearMode==='automatic');Promise.all(automatic.map(plot=>clearPlot(plot))).finally(()=>{if(browserPlots.some(plot=>plot.shown))setTimeout(renderPlotFrames,800)})});
 </script>"""
 
+# CAMELS main-window plot state is separate from browser/Dash plots.  This panel
+# mirrors the native "Close plots" button through the authenticated bridge.
+DASHBOARD_PAGE += """<script>
+document.body.insertAdjacentHTML('beforeend','<section id="camels-plot-window-status"><h2>CAMELS plot windows</h2><p><strong id="camels-plot-window-count">Loading…</strong> native CAMELS plot window(s) open.</p><button id="close-camels-plots" type="button">Close plots</button><span id="camels-plot-window-message" class="hint" style="margin-left:.5rem"></span></section>');
+const camelsPlotWindowCount=document.getElementById('camels-plot-window-count'),closeCamelsPlotsButton=document.getElementById('close-camels-plots'),camelsPlotWindowMessage=document.getElementById('camels-plot-window-message');
+function selectedPlotProtocol(){const name=protocol.value;return name&&name!=='Loading protocols...'&&name!=='No saved protocols'?name:''}
+async function refreshCamelsPlotWindows(){const name=selectedPlotProtocol();if(!name){camelsPlotWindowCount.textContent='—';closeCamelsPlotsButton.disabled=true;return}try{const data=await api('plots?protocol_name='+encodeURIComponent(name));const count=Number(data.open_plot_count||0);camelsPlotWindowCount.textContent=String(count);closeCamelsPlotsButton.disabled=count===0;camelsPlotWindowMessage.textContent=''}catch(error){camelsPlotWindowCount.textContent='Unavailable';closeCamelsPlotsButton.disabled=true;camelsPlotWindowMessage.textContent=' '+error.message}}
+closeCamelsPlotsButton.addEventListener('click',async()=>{const name=selectedPlotProtocol();if(!name)return;closeCamelsPlotsButton.disabled=true;camelsPlotWindowMessage.textContent=' Closing…';try{const data=await api('plots/close?protocol_name='+encodeURIComponent(name),{method:'POST'});camelsPlotWindowMessage.textContent=' Close requested for '+String(data.closed_plot_count||0)+' plot(s).';setTimeout(refreshCamelsPlotWindows,300)}catch(error){camelsPlotWindowMessage.textContent=' Could not close plots: '+error.message}finally{setTimeout(refreshCamelsPlotWindows,700)}});
+protocol.addEventListener('change',refreshCamelsPlotWindows);setInterval(refreshCamelsPlotWindows,2000);setTimeout(refreshCamelsPlotWindows,500);
+</script>"""
+
 
 def create_app(
     *,
@@ -434,6 +445,24 @@ def create_app(
     @app.get("/dashboard/runs/{run_id}")
     def dashboard_run_status(run_id: str, connection_id: str | None = None):
         return request_camels("GET", f"/api/v1/protocols/results/{run_id}", connection=current_connection(connection_id))
+
+    @app.get("/dashboard/plots")
+    def dashboard_plot_windows(protocol_name: str):
+        """Return the live CAMELS GUI plot-window count for one saved protocol key."""
+        return request_camels(
+            "GET",
+            "/api/v1/gui/plots",
+            connection=connection_for_protocol(protocol_name),
+        )
+
+    @app.post("/dashboard/plots/close")
+    def dashboard_close_plot_windows(protocol_name: str):
+        """Request CAMELS to perform its main-window Close plots action."""
+        return request_camels(
+            "POST",
+            "/api/v1/gui/plots/close",
+            connection=connection_for_protocol(protocol_name),
+        )
 
     @app.get("/health")
     def health(connection_id: str | None = None):
