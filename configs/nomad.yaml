@@ -12,6 +12,12 @@ plugins:
       nomad_north_jupyter.north_tools:jupyter:
         north_tool:
           image: ghcr.io/fairmat-nfdi/nomad-north-jupyter:latest
+      nomad_camels_oasis.entry_points:camels:
+        # Replace this with the address reachable from the NOMAD app container.
+        # Configure the key through /nomad-oasis/camels/setup. A CAMELS_API_KEY
+        # environment variable remains supported for unattended deployments.
+        camels_base_url: "http://host.docker.internal:8000"
+        request_timeout_seconds: 10
 
 meta:
   deployment: "oasis"

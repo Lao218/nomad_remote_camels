@@ -80,6 +80,9 @@ RUN apt-get update \
 # Install UV
 COPY --from=uv_image /uv /bin/uv
 
+# Local NOMAD plugin source must be present when uv installs this distribution.
+COPY nomad_camels_oasis ./nomad_camels_oasis
+
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=source=.git,target=.git,type=bind \
     --mount=type=bind,source=uv.lock,target=uv.lock \
@@ -152,6 +155,7 @@ FROM base_final AS final
 ARG PYTHON_VERSION=3.12
 
 COPY --chown=nomad:${UID} --from=builder /opt/venv /opt/venv
+COPY --chown=nomad:${UID} nomad_camels_oasis /app/nomad_camels_oasis
 COPY configs/nomad.yaml nomad.yaml
 COPY pyproject.toml uv.lock /opt/
 COPY --chown=nomad:${UID} --from=docs /app/built_docs /opt/venv/lib/python${PYTHON_VERSION}/site-packages/nomad/app/static/docs
