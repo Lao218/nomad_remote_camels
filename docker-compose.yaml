@@ -257,7 +257,9 @@ services:
   # nomad app (api + proxy)
   app:
     restart: unless-stopped
-    image: ghcr.io/fairmat-nfdi/nomad-distro-template:main
+    # Custom distribution image published by this repository's GitHub Action.
+    # It contains the local nomad_camels_oasis Dashboard plugin.
+    image: ghcr.io/lao218/nomad_remote_camels:main
     platform: linux/amd64
     container_name: nomad_oasis_app
     environment:
