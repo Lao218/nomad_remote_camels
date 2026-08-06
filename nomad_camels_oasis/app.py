@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+from urllib.parse import quote
 import os
 import uuid
 from pathlib import Path
@@ -175,7 +176,7 @@ document.getElementById('browser-plots').insertAdjacentHTML('beforebegin','<sect
 const pidPlotStatus=document.getElementById('pid-plot-status'),pidPlotFrames=document.getElementById('pid-plot-frames');let pidPlotlyPromise=null;
 function ensurePlotly(){if(window.Plotly)return Promise.resolve(window.Plotly);if(pidPlotlyPromise)return pidPlotlyPromise;pidPlotlyPromise=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://cdn.plot.ly/plotly-2.35.2.min.js';script.onload=()=>resolve(window.Plotly);script.onerror=()=>reject(new Error('Could not load Plotly.'));document.head.append(script)});return pidPlotlyPromise}
 function pidPlotId(name){return 'pid-plot-'+name.replace(/[^a-zA-Z0-9_-]/g,'_')}
-function ensurePidFrame(plot){const id=pidPlotId(plot.device_name);let frame=document.getElementById(id);if(frame)return frame;const section=document.createElement('section');section.id=id;const title=document.createElement('h3');title.textContent=plot.device_name+' — '+(plot.title||'PID plot');frame=document.createElement('div');frame.className='pid-plot-frame';frame.style.cssText='width:100%;height:420px;margin-bottom:1.5rem';section.append(title,frame);pidPlotFrames.append(section);return frame}
+function ensurePidFrame(plot){const id=pidPlotId(plot.device_name);let frame=document.getElementById(id);if(frame)return frame;const section=document.createElement('section');section.id=id;const title=document.createElement('h3');title.textContent=plot.device_name+' — '+(plot.title||'PID plot');frame=document.createElement('div');frame.className='pid-plot-frame';frame.style.cssText='width:100%;height:260px;max-height:260px;overflow:hidden;margin-bottom:1rem';section.append(title,frame);pidPlotFrames.append(section);return frame}
 async function refreshPidPlots(){const name=selectedPlotProtocol();if(!name){pidPlotStatus.textContent='Choose a protocol to inspect active PID controllers.';pidPlotFrames.innerHTML='';return}try{const data=await api('pid-plots?protocol_name='+encodeURIComponent(name)),plots=data.pid_plots||[];if(!plots.length){pidPlotStatus.textContent='No active PID controller plot is available for this protocol.';pidPlotFrames.innerHTML='';return}pidPlotStatus.textContent=plots.length+' active PID controller plot(s).';const active=new Set(plots.map(plot=>pidPlotId(plot.device_name)));for(const node of [...pidPlotFrames.children])if(!active.has(node.id))node.remove();const Plotly=await ensurePlotly();for(const plot of plots){const frame=ensurePidFrame(plot),series=plot.series||{},x=plot.x||[];const traces=['current value','setpoint','output','k','i','d'].filter(key=>Array.isArray(series[key])).map(key=>({x,y:series[key],name:key,mode:'lines',line:{width:key==='current value'||key==='setpoint'?3:1},visible:['current value','setpoint'].includes(key)?true:'legendonly',yaxis:['output','k','i','d'].includes(key)?'y2':'y'}));Plotly.react(frame,traces,{margin:{t:20,r:55,b:45,l:55},xaxis:{title:'time (s)'},yaxis:{title:'temperature / value'},yaxis2:{title:'PID values',overlaying:'y',side:'right'},legend:{orientation:'h'}},{responsive:true,displaylogo:false})}}catch(error){pidPlotStatus.textContent='Could not load PID plots: '+error.message}}
 protocol.addEventListener('change',refreshPidPlots);setInterval(refreshPidPlots,1000);setTimeout(refreshPidPlots,750);
 </script>"""
@@ -359,7 +360,10 @@ def create_app(
                 error_payload = json.loads(exc.read().decode("utf-8"))
             except (ValueError, UnicodeDecodeError):
                 error_payload = {"detail": "CAMELS returned a non-JSON error."}
-            raise HTTPException(status_code=exc.code, detail=error_payload) from exc
+            detail = error_payload.get("detail", error_payload)
+            if not isinstance(detail, str):
+                detail = json.dumps(detail)
+            raise HTTPException(status_code=exc.code, detail=detail) from exc
         except URLError as exc:
             raise HTTPException(502, "CAMELS service is unavailable.") from exc
         try:
@@ -482,7 +486,7 @@ def create_app(
         """Proxy the active PID controller traces for the selected protocol."""
         return request_camels(
             "GET",
-            "/api/v1/gui/pid-plots",
+            f"/api/v1/gui/pid-plots?protocol_name={quote(protocol_name)}",
             connection=connection_for_protocol(protocol_name),
         )
 
