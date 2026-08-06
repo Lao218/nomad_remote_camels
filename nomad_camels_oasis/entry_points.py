@@ -6,7 +6,12 @@ import os
 
 from pydantic import Field
 
-from nomad.config.models.plugins import APIEntryPoint
+from nomad.config.models.plugins import (
+    APIEntryPoint,
+    ActionEntryPoint,
+    DashboardEntryPoint,
+    SchemaPackageEntryPoint,
+)
 
 
 class CAMELSAPIEntryPoint(APIEntryPoint):
@@ -35,4 +40,56 @@ camels = CAMELSAPIEntryPoint(
     name="CAMELS remote control",
     description="Authenticated OASIS backend proxy for selected CAMELS protocols.",
     prefix="camels",
+)
+
+
+class CAMELSMeasurementSchemaEntryPoint(SchemaPackageEntryPoint):
+    def load(self):
+        from nomad_camels_oasis.measurement_schema import m_package
+
+        return m_package
+
+
+class CAMELSMeasurementActionEntryPoint(ActionEntryPoint):
+    """Register the CPU workflow that starts and monitors CAMELS runs."""
+
+    def load(self):
+        from nomad.actions import Action, TaskQueue
+        from nomad_camels_oasis.actions.activities import (
+            get_camels_run_status,
+            start_camels_run,
+        )
+        from nomad_camels_oasis.actions.workflows import CAMELSMeasurementWorkflow
+
+        return Action(
+            task_queue=TaskQueue.CPU,
+            workflow=CAMELSMeasurementWorkflow,
+            activities=[start_camels_run, get_camels_run_status],
+        )
+
+
+class CAMELSMeasurementDashboardEntryPoint(DashboardEntryPoint):
+    """Expose the CAMELS control UI in NOMAD's Dashboards page."""
+
+    def load(self):
+        from nomad_camels_oasis.measurement_dashboard import create_dashboard
+
+        return create_dashboard()
+
+
+camels_measurement_schema = CAMELSMeasurementSchemaEntryPoint(
+    name="CAMELS Measurement ELN",
+    description="ELN schema for parameterised CAMELS measurements.",
+)
+
+camels_measurement_action = CAMELSMeasurementActionEntryPoint(
+    name="CAMELS measurement action",
+    description="Starts a CAMELS protocol asynchronously through NOMAD Actions.",
+)
+
+camels_measurement_dashboard = CAMELSMeasurementDashboardEntryPoint(
+    id_url_safe="camels-measurements",
+    name="CAMELS Measurements",
+    description="Start and monitor CAMELS measurements from NOMAD.",
+    launch_modes=["embedded", "tab"],
 )

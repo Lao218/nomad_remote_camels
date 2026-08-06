@@ -254,6 +254,31 @@ services:
   #     retries: 5
   #     start_period: 15s
 
+  # CPU worker for plugin-defined NOMAD Actions (e.g. CAMELS measurements).
+  cpu_worker:
+    restart: unless-stopped
+    image: ghcr.io/lao218/nomad_remote_camels/cpu-action:main
+    platform: linux/amd64
+    container_name: nomad_oasis_cpu_worker
+    env_file:
+      - ./.env
+    environment:
+      NOMAD_SERVICE: nomad_oasis_cpu_worker
+      NOMAD_ELASTIC_HOST: elastic
+      NOMAD_MONGO_HOST: mongo
+      NOMAD_LOGSTASH_HOST: logtransfer
+      NOMAD_TEMPORAL_HOST: temporal
+    depends_on:
+      elastic:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    volumes:
+      - ./.volumes/fs:/app/.volumes/fs
+    command: python -m nomad.cli admin run action-cpu-worker
+
   # nomad app (api + proxy)
   app:
     restart: unless-stopped
