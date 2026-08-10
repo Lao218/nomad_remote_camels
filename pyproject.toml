@@ -36,6 +36,7 @@ nomad_camels_measurement_dashboard = "nomad_camels_oasis.entry_points:camels_mea
 [project.optional-dependencies]
 # Add your plugins to the list below.
 plugins = [
+  "nomad-gui",
   "nomad-north-jupyter>=0.2.6",
 ]
 jupyter = ["jupyter-events"]

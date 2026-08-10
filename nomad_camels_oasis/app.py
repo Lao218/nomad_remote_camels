@@ -182,6 +182,43 @@ protocol.addEventListener('change',refreshPidPlots);setInterval(refreshPidPlots,
 </script>"""
 
 
+# GUI v2's dashboard iframe intentionally does not grant ``allow-modals``.
+# Replace the browser-native confirm() used by the setup page with a visible,
+# two-click confirmation that works both embedded and as a standalone page.
+SETUP_PAGE = SETUP_PAGE.replace(
+    "if(!confirm('Delete the saved key for '+entry.name+'?'))return;",
+    "if(button.dataset.confirming!=='true'){button.dataset.confirming='true';button.textContent='Confirm delete';setTimeout(()=>{button.dataset.confirming='';button.textContent='Delete'},4000);return;}",
+)
+
+# A CAMELS measurement can briefly make its local API unavailable while the
+# protocol is starting or finishing. Keep polling such transient failures so a
+# completed run is not incorrectly presented as a failed measurement.
+DASHBOARD_PAGE += """<script>
+let camelsStatusUnavailableRetries=0;
+async function poll(id,connectionId){
+  clearTimeout(timer);
+  try{
+    const result=await api('runs/'+encodeURIComponent(id)+'?connection_id='+encodeURIComponent(connectionId));
+    const [text,done]=statusInfo(result);
+    status.textContent=text;
+    camelsStatusUnavailableRetries=0;
+    if(done)run.disabled=false;
+    else timer=setTimeout(()=>poll(id,connectionId),1500);
+  }catch(error){
+    const message=String(error.message||error);
+    if(message.includes('CAMELS service is unavailable')&&camelsStatusUnavailableRetries<20){
+      camelsStatusUnavailableRetries+=1;
+      status.textContent='CAMELS connection temporarily unavailable; retrying ('+camelsStatusUnavailableRetries+'/20)...';
+      timer=setTimeout(()=>poll(id,connectionId),2000);
+      return;
+    }
+    status.textContent='Status check failed: '+message;
+    run.disabled=false;
+  }
+}
+</script>"""
+
+
 def create_app(
     *,
     camels_base_url: str,
