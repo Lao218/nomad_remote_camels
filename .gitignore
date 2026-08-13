@@ -164,3 +164,8 @@ cython_debug/
 
 # TLS certificates
 tls/
+
+# Local CAMELS bridge credentials and transient local build output.
+# The credentials file contains encrypted protocol-scoped API keys.
+.volumes/fs/camels-bridge/settings.json
+.run-logs/

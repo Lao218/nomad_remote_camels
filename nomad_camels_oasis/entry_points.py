@@ -24,6 +24,23 @@ class CAMELSAPIEntryPoint(APIEntryPoint):
     request_timeout_seconds: float = Field(10, gt=0, le=120)
     settings_path: str = Field("/app/.volumes/fs/camels-bridge/settings.json")
 
+    def dict_safe(self):
+        """Expose the FastAPI documentation URL to the GUI v2 API catalogue.
+
+        ``APIEntryPoint.dict_safe`` deliberately exports only the standard
+        plugin fields.  GUI v2 enables its documentation button only when the
+        catalogue item contains ``documentation_absolute_url``.  The CAMELS
+        proxy already serves Swagger UI at ``<api_base_path>/camels/docs``;
+        publish that same deployment-relative URL here.
+        """
+        from nomad.config import config
+
+        result = super().dict_safe()
+        result["documentation_absolute_url"] = (
+            f"{config.services.api_base_path.rstrip('/')}/camels/docs"
+        )
+        return result
+
     def load(self):
         from nomad_camels_oasis.app import create_app
 
@@ -77,6 +94,15 @@ class CAMELSMeasurementDashboardEntryPoint(DashboardEntryPoint):
         return create_dashboard()
 
 
+class CAMELSMonitorDashboardEntryPoint(DashboardEntryPoint):
+    """Expose the CAMELS measurement monitor as a separate dashboard."""
+
+    def load(self):
+        from nomad_camels_oasis.measurement_dashboard import create_monitor_dashboard
+
+        return create_monitor_dashboard()
+
+
 camels_measurement_schema = CAMELSMeasurementSchemaEntryPoint(
     name="CAMELS Measurement ELN",
     description="ELN schema for parameterised CAMELS measurements.",
@@ -89,7 +115,14 @@ camels_measurement_action = CAMELSMeasurementActionEntryPoint(
 
 camels_measurement_dashboard = CAMELSMeasurementDashboardEntryPoint(
     id_url_safe="camels-measurements",
-    name="CAMELS Measurements",
-    description="Start and monitor CAMELS measurements from NOMAD.",
+    name="CAMELS connections setup",
+    description="Configure and manage protocol-scoped CAMELS connections.",
+    launch_modes=["embedded", "tab"],
+)
+
+camels_measurement_monitor_dashboard = CAMELSMonitorDashboardEntryPoint(
+    id_url_safe="camels-measurement-dashboard",
+    name="CAMELS measurement dashboard",
+    description="Monitor CAMELS measurement status and live plots.",
     launch_modes=["embedded", "tab"],
 )

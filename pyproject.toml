@@ -32,6 +32,7 @@ nomad_camels_oasis = "nomad_camels_oasis.entry_points:camels"
 nomad_camels_measurement_schema = "nomad_camels_oasis.entry_points:camels_measurement_schema"
 nomad_camels_measurement_action = "nomad_camels_oasis.entry_points:camels_measurement_action"
 nomad_camels_measurement_dashboard = "nomad_camels_oasis.entry_points:camels_measurement_dashboard"
+nomad_camels_measurement_monitor_dashboard = "nomad_camels_oasis.entry_points:camels_measurement_monitor_dashboard"
 
 [project.optional-dependencies]
 # Add your plugins to the list below.
