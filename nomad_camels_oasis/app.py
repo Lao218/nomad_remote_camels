@@ -119,7 +119,7 @@ async function clearPlot(plot,message){if(message)message.textContent=' Clearing
 async function loadBrowserPlots(){try{const definition=await api('protocols/'+encodeURIComponent(protocol.value)+'/definition');browserPlots=collectBrowserPlots(definition);renderPlotTable();renderPlotFrames()}catch(error){browserPlots=[];renderPlotTable();browserPlotFrames.innerHTML='';status.textContent='Error loading browser plots: '+error.message}}
 document.getElementById('load').addEventListener('click',loadBrowserPlots);
 browserPlotUrlInput.addEventListener('change',()=>renderPlotFrames());
-document.getElementById('add-manual-plot').addEventListener('click',()=>{const name=manualPlotName.value.trim(),port=Number(manualPlotPort.value);if(!name||!Number.isInteger(port)||port<1||port>65535){manualPlotStatus.textContent=' Enter a plot name and a valid port (1â€“65535).';return}const key=name+'@'+port;if(browserPlots.some(plot=>plotKey(plot)===key)){manualPlotStatus.textContent=' This plot is already in the list.';return}browserPlots.push({name,port,enabled:true,shown:true,clearMode:'automatic'});manualPlotName.value='';manualPlotPort.value='';manualPlotStatus.textContent=' Added.';renderPlotTable();renderPlotFrames()});
+document.getElementById('add-manual-plot').addEventListener('click',()=>{const name=manualPlotName.value.trim(),port=Number(manualPlotPort.value);if(!name||!Number.isInteger(port)||port<1||port>65535){manualPlotStatus.textContent=' Enter a plot name and a valid port (1-65535).';return}const key=name+'@'+port;if(browserPlots.some(plot=>plotKey(plot)===key)){manualPlotStatus.textContent=' This plot is already in the list.';return}browserPlots.push({name,port,enabled:true,shown:true,clearMode:'automatic'});manualPlotName.value='';manualPlotPort.value='';manualPlotStatus.textContent=' Added.';renderPlotTable();renderPlotFrames()});
 protocol.addEventListener('change',()=>{browserPlots=[];renderPlotTable();browserPlotFrames.innerHTML=''});
 run.addEventListener('click',()=>{const automatic=browserPlots.filter(plot=>plot.shown&&plot.clearMode==='automatic');Promise.all(automatic.map(plot=>clearPlot(plot))).finally(()=>{if(browserPlots.some(plot=>plot.shown))setTimeout(renderPlotFrames,800)})});
 </script>"""
@@ -127,11 +127,11 @@ run.addEventListener('click',()=>{const automatic=browserPlots.filter(plot=>plot
 # CAMELS main-window plot state is separate from browser/Dash plots.  This panel
 # mirrors the native "Close plots" button through the authenticated bridge.
 DASHBOARD_PAGE += """<script>
-document.getElementById('browser-plots').insertAdjacentHTML('beforebegin','<section id="camels-plot-window-status"><h2>CAMELS plot windows</h2><p><strong id="camels-plot-window-count">Loadingâ€¦</strong> native CAMELS plot window(s) open.</p><button id="close-camels-plots" type="button">Close plots</button><span id="camels-plot-window-message" class="hint" style="margin-left:.5rem"></span></section>');
+document.getElementById('browser-plots').insertAdjacentHTML('beforebegin','<section id="camels-plot-window-status"><h2>CAMELS plot windows</h2><p><strong id="camels-plot-window-count">Loading...</strong> native CAMELS plot window(s) open.</p><button id="close-camels-plots" type="button">Close plots</button><span id="camels-plot-window-message" class="hint" style="margin-left:.5rem"></span></section>');
 const camelsPlotWindowCount=document.getElementById('camels-plot-window-count'),closeCamelsPlotsButton=document.getElementById('close-camels-plots'),camelsPlotWindowMessage=document.getElementById('camels-plot-window-message');
 function selectedPlotProtocol(){const name=protocol.value;return name&&name!=='Loading protocols...'&&name!=='No saved protocols'?name:''}
-async function refreshCamelsPlotWindows(){const name=selectedPlotProtocol();if(!name){camelsPlotWindowCount.textContent='â€”';closeCamelsPlotsButton.disabled=true;return}try{const data=await api('plots?protocol_name='+encodeURIComponent(name));const count=Number(data.open_plot_count||0);camelsPlotWindowCount.textContent=String(count);closeCamelsPlotsButton.disabled=count===0;camelsPlotWindowMessage.textContent=''}catch(error){camelsPlotWindowCount.textContent='Unavailable';closeCamelsPlotsButton.disabled=true;camelsPlotWindowMessage.textContent=' '+error.message}}
-closeCamelsPlotsButton.addEventListener('click',async()=>{const name=selectedPlotProtocol();if(!name)return;closeCamelsPlotsButton.disabled=true;camelsPlotWindowMessage.textContent=' Closingâ€¦';try{const data=await api('plots/close?protocol_name='+encodeURIComponent(name),{method:'POST'});camelsPlotWindowMessage.textContent=' Close requested for '+String(data.closed_plot_count||0)+' plot(s).';setTimeout(refreshCamelsPlotWindows,300)}catch(error){camelsPlotWindowMessage.textContent=' Could not close plots: '+error.message}finally{setTimeout(refreshCamelsPlotWindows,700)}});
+async function refreshCamelsPlotWindows(){const name=selectedPlotProtocol();if(!name){camelsPlotWindowCount.textContent='-';closeCamelsPlotsButton.disabled=true;return}try{const data=await api('plots?protocol_name='+encodeURIComponent(name));const count=Number(data.open_plot_count||0);camelsPlotWindowCount.textContent=String(count);closeCamelsPlotsButton.disabled=count===0;camelsPlotWindowMessage.textContent=''}catch(error){camelsPlotWindowCount.textContent='Unavailable';closeCamelsPlotsButton.disabled=true;camelsPlotWindowMessage.textContent=' '+error.message}}
+closeCamelsPlotsButton.addEventListener('click',async()=>{const name=selectedPlotProtocol();if(!name)return;closeCamelsPlotsButton.disabled=true;camelsPlotWindowMessage.textContent=' Closing...';try{const data=await api('plots/close?protocol_name='+encodeURIComponent(name),{method:'POST'});camelsPlotWindowMessage.textContent=' Close requested for '+String(data.closed_plot_count||0)+' plot(s).';setTimeout(refreshCamelsPlotWindows,300)}catch(error){camelsPlotWindowMessage.textContent=' Could not close plots: '+error.message}finally{setTimeout(refreshCamelsPlotWindows,700)}});
 protocol.addEventListener('change',refreshCamelsPlotWindows);const nativePlotWindowInterval=setInterval(refreshCamelsPlotWindows,2000);setTimeout(refreshCamelsPlotWindows,500);
 </script>"""
 
@@ -143,7 +143,7 @@ document.getElementById('browser-plots').insertAdjacentHTML('beforebegin','<sect
 const pidPlotStatus=document.getElementById('pid-plot-status'),pidPlotFrames=document.getElementById('pid-plot-frames');let pidPlotlyPromise=null;
 function ensurePlotly(){if(window.Plotly)return Promise.resolve(window.Plotly);if(pidPlotlyPromise)return pidPlotlyPromise;pidPlotlyPromise=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://cdn.plot.ly/plotly-2.35.2.min.js';script.onload=()=>resolve(window.Plotly);script.onerror=()=>reject(new Error('Could not load Plotly.'));document.head.append(script)});return pidPlotlyPromise}
 function pidPlotId(name){return 'pid-plot-'+name.replace(/[^a-zA-Z0-9_-]/g,'_')}
-function ensurePidFrame(plot){const id=pidPlotId(plot.device_name);let frame=document.getElementById(id);if(frame)return frame;const section=document.createElement('section');section.id=id;const title=document.createElement('h3');title.textContent=plot.device_name+' â€” '+(plot.title||'PID plot');frame=document.createElement('div');frame.className='pid-plot-frame';frame.style.cssText='width:100%;height:260px;max-height:260px;overflow:hidden;margin-bottom:1rem';section.append(title,frame);pidPlotFrames.append(section);return frame}
+function ensurePidFrame(plot){const id=pidPlotId(plot.device_name);let frame=document.getElementById(id);if(frame)return frame;const section=document.createElement('section');section.id=id;const title=document.createElement('h3');title.textContent=plot.device_name+' - '+(plot.title||'PID plot');frame=document.createElement('div');frame.className='pid-plot-frame';frame.style.cssText='width:100%;height:260px;max-height:260px;overflow:hidden;margin-bottom:1rem';section.append(title,frame);pidPlotFrames.append(section);return frame}
 async function refreshPidPlots(){const name=selectedPlotProtocol();if(!name){pidPlotStatus.textContent='Choose a protocol to inspect active PID controllers.';pidPlotFrames.innerHTML='';return}try{const data=await api('pid-plots?protocol_name='+encodeURIComponent(name)),plots=data.pid_plots||[];if(!plots.length){pidPlotStatus.textContent='No active PID controller plot is available for this protocol.';pidPlotFrames.innerHTML='';return}pidPlotStatus.textContent=plots.length+' active PID controller plot(s).';const active=new Set(plots.map(plot=>pidPlotId(plot.device_name)));for(const node of [...pidPlotFrames.children])if(!active.has(node.id))node.remove();const Plotly=await ensurePlotly();for(const plot of plots){const frame=ensurePidFrame(plot),series=plot.series||{},x=plot.x||[];const traces=['current value','setpoint','output','k','i','d'].filter(key=>Array.isArray(series[key])).map(key=>({x,y:series[key],name:key,mode:'lines',line:{width:key==='current value'||key==='setpoint'?3:1},visible:['current value','setpoint'].includes(key)?true:'legendonly',yaxis:['output','k','i','d'].includes(key)?'y2':'y'}));Plotly.react(frame,traces,{margin:{t:20,r:55,b:45,l:55},xaxis:{title:'time (s)'},yaxis:{title:'temperature / value'},yaxis2:{title:'PID values',overlaying:'y',side:'right'},legend:{orientation:'h'}},{responsive:true,displaylogo:false})}}catch(error){pidPlotStatus.textContent='Could not load PID plots: '+error.message}}
 protocol.addEventListener('change',refreshPidPlots);const pidRefreshInterval=setInterval(refreshPidPlots,1000);setTimeout(refreshPidPlots,750);
 </script>"""
@@ -515,7 +515,7 @@ DASHBOARD_PAGE += """<script>
     else if(!actionPending)startButton.textContent='Start measurement';
   }
   function duration(seconds){
-    if(seconds===null || seconds===undefined || !Number.isFinite(Number(seconds)))return 'â€”';
+    if(seconds===null || seconds===undefined || !Number.isFinite(Number(seconds)))return '-';
     seconds=Math.max(0,Math.round(Number(seconds)));
     const h=Math.floor(seconds/3600),m=Math.floor((seconds%3600)/60),s=seconds%60;
     return h ? String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0') : String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
@@ -531,11 +531,11 @@ DASHBOARD_PAGE += """<script>
       measurementRunning=['running','preparing','queued'].some(word=>normalized.includes(word));
       const activeProtocol=data.protocol_name ? String(data.protocol_name) : '';
       text.textContent=measurementRunning && activeProtocol
-        ? status+' â€” currently running: '+activeProtocol
+        ? status+' - currently running: '+activeProtocol
         : status;
       bar.style.width=progress.toFixed(1)+'%';
       updateStartAvailability();
-      detail.textContent=progress.toFixed(0)+'% Â· '+duration(data.elapsed_seconds)+' elapsed Â· '+(status==='Finished' ? 'finished' : duration(data.remaining_seconds)+' remaining');
+      detail.textContent=progress.toFixed(0)+'% | '+duration(data.elapsed_seconds)+' elapsed | '+(status==='Finished' ? 'finished' : duration(data.remaining_seconds)+' remaining');
     }catch(error){
       text.textContent='Status unavailable';
       detail.textContent=String(error.message||error);
@@ -743,31 +743,50 @@ def create_app(
     store = CredentialStore(settings_path, encryption_secret)
     default_url = camels_base_url.rstrip("/")
 
-    def saved_connections() -> tuple[dict[str, dict[str, str]], str | None]:
-        """Return the new multi-connection format and transparently read v1 data."""
-        saved = store.load()
-        connections = saved.get("connections")
-        if isinstance(connections, dict):
-            cleaned = {
-                connection_id: value
-                for connection_id, value in connections.items()
-                if isinstance(value, dict) and value.get("api_key")
-            }
-            return cleaned, saved.get("active_connection_id")
-        # Version 1 stored exactly one URL/key pair. Keep it available as a
-        # migration entry without requiring the user to paste the key again.
-        if saved.get("api_key"):
-            return {
-                "default": {
-                    "name": saved.get("name") or "Existing CAMELS connection",
-                    "camels_base_url": saved.get("camels_base_url", default_url),
-                    "api_key": saved["api_key"],
-                }
-            }, "default"
-        return {}, None
+    def saved_connections(user_id: str) -> tuple[dict[str, dict[str, str]], str | None]:
+        """Return only the encrypted CAMELS credentials belonging to ``user_id``.
 
-    def connection_summary() -> dict[str, Any]:
-        connections, active_connection_id = saved_connections()
+        Older bridge versions used one installation-wide credential store.  It is
+        deliberately *not* read here: otherwise the first authenticated user
+        would gain access to another user's instrument key.
+        """
+        saved = store.load()
+        users = saved.get("users")
+        user_settings = users.get(user_id, {}) if isinstance(users, dict) else {}
+        connections = user_settings.get("connections")
+        if not isinstance(connections, dict):
+            return {}, None
+        cleaned = {
+            connection_id: value
+            for connection_id, value in connections.items()
+            if isinstance(value, dict) and value.get("api_key")
+        }
+        return cleaned, user_settings.get("active_connection_id")
+
+    def store_user_connections(
+        user_id: str, connections: dict[str, dict[str, str]], active_connection_id: str | None
+    ) -> None:
+        """Update one user's bucket without exposing legacy global credentials."""
+        saved = store.load()
+        users = saved.get("users")
+        users = dict(users) if isinstance(users, dict) else {}
+        users[user_id] = {
+            "connections": connections,
+            "active_connection_id": active_connection_id,
+        }
+        payload: dict[str, Any] = {"users": users}
+        # Keep existing pre-account data encrypted for an administrator to
+        # migrate manually, but never use it for API requests.
+        if "connections" in saved or "api_key" in saved:
+            payload["legacy_unassigned"] = {
+                key: saved[key]
+                for key in ("connections", "active_connection_id", "api_key", "name", "camels_base_url")
+                if key in saved
+            }
+        store.save(payload)
+
+    def connection_summary(user_id: str) -> dict[str, Any]:
+        connections, active_connection_id = saved_connections(user_id)
         return {
             "connections": [
                 {
@@ -780,39 +799,30 @@ def create_app(
             "active_connection_id": active_connection_id,
         }
 
-    def current_connection(connection_id: str | None = None) -> tuple[str, str]:
-        connections, active_connection_id = saved_connections()
+    def current_connection(user_id: str, connection_id: str | None = None) -> tuple[str, str]:
+        connections, active_connection_id = saved_connections(user_id)
         selected_id = connection_id or active_connection_id
         selected = connections.get(selected_id) if selected_id else None
         if selected:
             return selected.get("camels_base_url", default_url).rstrip("/"), selected["api_key"]
-        # Retain environment-configured deployments that do not use setup.
-        url, key = default_url, api_key
-        if not key:
-            raise HTTPException(
-                status_code=503,
-                detail="CAMELS is not configured. Open /camels/setup and save a connection.",
-            )
-        return url, key
+        raise HTTPException(
+            status_code=503,
+            detail="No CAMELS connection is saved for this OASIS account. Open /camels/setup and save a connection.",
+        )
 
-    def persist_connection(settings: ConnectionSettings) -> dict[str, Any]:
-        connections, active_connection_id = saved_connections()
+    def persist_connection(user_id: str, settings: ConnectionSettings) -> dict[str, Any]:
+        connections, active_connection_id = saved_connections(user_id)
         connection_id = settings.connection_id if settings.connection_id in connections else uuid.uuid4().hex
         connections[connection_id] = {
             "name": settings.name.strip() or settings.camels_base_url.rstrip("/"),
             "camels_base_url": settings.camels_base_url.rstrip("/"),
             "api_key": settings.api_key,
         }
-        store.save(
-            {
-                "connections": connections,
-                "active_connection_id": connection_id or active_connection_id,
-            }
-        )
-        return {"connection_id": connection_id, **connection_summary()}
+        store_user_connections(user_id, connections, connection_id or active_connection_id)
+        return {"connection_id": connection_id, **connection_summary(user_id)}
 
     def save_protocol_connections(
-        settings: ConnectionSettings, protocol_response: dict[str, Any]
+        user_id: str, settings: ConnectionSettings, protocol_response: dict[str, Any]
     ) -> dict[str, Any]:
         """Store one encrypted credential per protocol, replacing name matches."""
         protocol_names = [
@@ -825,7 +835,7 @@ def create_app(
                 status_code=400,
                 detail="The CAMELS API key did not grant access to any protocol.",
             )
-        connections, _ = saved_connections()
+        connections, _ = saved_connections(user_id)
         # A protocol-scoped key is identified by the protocol it can control.
         # Replacing it never affects credentials for other protocol names.
         names_to_replace = set(protocol_names)
@@ -842,17 +852,12 @@ def create_app(
                 "camels_base_url": settings.camels_base_url.rstrip("/"),
                 "api_key": settings.api_key,
             }
-        store.save(
-            {
-                "connections": connections,
-                "active_connection_id": next(reversed(connections)),
-            }
-        )
-        return connection_summary()
+        store_user_connections(user_id, connections, next(reversed(connections)))
+        return connection_summary(user_id)
 
-    def protocol_catalog() -> tuple[list[str], dict[str, str]]:
+    def protocol_catalog(user_id: str) -> tuple[list[str], dict[str, str]]:
         """Return all saved protocol names and the credential that owns each."""
-        connections, _ = saved_connections()
+        connections, _ = saved_connections(user_id)
         names: list[str] = []
         connection_ids: dict[str, str] = {}
         for connection_id, value in connections.items():
@@ -862,7 +867,6 @@ def create_app(
                     names.append(protocol_name)
                 connection_ids[protocol_name] = connection_id
                 continue
-            # Compatibility for an old single-key record: discover its name.
             response = request_camels(
                 "GET",
                 "/api/v1/protocols",
@@ -874,12 +878,12 @@ def create_app(
                     connection_ids[discovered_name] = connection_id
         return names, connection_ids
 
-    def connection_for_protocol(protocol_name: str) -> tuple[str, str]:
-        _, connection_ids = protocol_catalog()
+    def connection_for_protocol(user_id: str, protocol_name: str) -> tuple[str, str]:
+        _, connection_ids = protocol_catalog(user_id)
         connection_id = connection_ids.get(protocol_name)
         if not connection_id:
             raise HTTPException(status_code=404, detail="No saved API key for this protocol.")
-        return current_connection(connection_id)
+        return current_connection(user_id, connection_id)
 
     def request_camels(
         method: str,
@@ -890,7 +894,9 @@ def create_app(
         require_key: bool = True,
     ) -> Any:
         if connection is None:
-            connection = current_connection() if require_key else (default_url, "")
+            if require_key:
+                raise HTTPException(status_code=500, detail="A user CAMELS connection is required.")
+            connection = (default_url, "")
         base_url, key = connection
         body = None if payload is None else json.dumps(payload).encode("utf-8")
         headers = {"Authorization": f"Bearer {key}"} if key else {}
@@ -920,16 +926,16 @@ def create_app(
     read_user = get_current_user([Scope.ENTRIES_READ], allow_anonymous=False)
 
     @app.get("/setup", response_class=HTMLResponse)
-    def setup_page():
+    def setup_page(_user=Depends(read_user)):
         return SETUP_PAGE
 
     @app.get("/settings/connection")
-    def connection_status(_user=Depends(write_user)):
-        return {"configured": bool(saved_connections()[0] or api_key), **connection_summary()}
+    def connection_status(user=Depends(write_user)):
+        return {"configured": bool(saved_connections(user.user_id)[0]), **connection_summary(user.user_id)}
 
     @app.get("/settings/connections")
-    def list_connections():
-        protocol_names, connection_ids = protocol_catalog()
+    def list_connections(user=Depends(read_user)):
+        protocol_names, connection_ids = protocol_catalog(user.user_id)
         return {
             "connections": [
                 {"connection_id": connection_ids[name], "name": name}
@@ -938,7 +944,7 @@ def create_app(
         }
 
     @app.post("/settings/connection/test")
-    def test_connection(settings: ConnectionSettings):
+    def test_connection(settings: ConnectionSettings, _user=Depends(write_user)):
         return request_camels(
             "GET",
             "/api/v1/protocols",
@@ -946,79 +952,80 @@ def create_app(
         )
 
     @app.post("/settings/connection")
-    def save_connection(settings: ConnectionSettings):
+    def save_connection(settings: ConnectionSettings, user=Depends(write_user)):
         protocols = request_camels(
             "GET",
             "/api/v1/protocols",
             connection=(settings.camels_base_url.rstrip("/"), settings.api_key),
         )
-        return {"saved": True, "protocols": protocols, **save_protocol_connections(settings, protocols)}
+        return {
+            "saved": True,
+            "protocols": protocols,
+            **save_protocol_connections(user.user_id, settings, protocols),
+        }
 
     @app.delete("/settings/connections/{connection_id}")
-    def delete_connection(connection_id: str):
-        connections, active_connection_id = saved_connections()
+    def delete_connection(connection_id: str, user=Depends(write_user)):
+        connections, active_connection_id = saved_connections(user.user_id)
         if connection_id not in connections:
             raise HTTPException(status_code=404, detail="CAMELS connection not found.")
         del connections[connection_id]
         if active_connection_id == connection_id:
             active_connection_id = next(iter(connections), None)
-        store.save({"connections": connections, "active_connection_id": active_connection_id})
-        return connection_summary()
+        store_user_connections(user.user_id, connections, active_connection_id)
+        return connection_summary(user.user_id)
 
     @app.delete("/settings/connections")
-    def delete_all_connections():
-        """Remove all encrypted protocol keys from this local OASIS instance."""
-        store.save({"connections": {}, "active_connection_id": None})
-        return connection_summary()
+    def delete_all_connections(user=Depends(write_user)):
+        """Remove only the current user's encrypted protocol keys."""
+        store_user_connections(user.user_id, {}, None)
+        return connection_summary(user.user_id)
 
     @app.get("/dashboard", response_class=HTMLResponse)
-    def dashboard_page():
+    def dashboard_page(_user=Depends(read_user)):
         return DASHBOARD_PAGE
 
     @app.get("/dashboard/connections")
-    def dashboard_connections():
-        return connection_summary()
+    def dashboard_connections(user=Depends(read_user)):
+        return connection_summary(user.user_id)
 
-    # The dashboard is deliberately served without an extra NOMAD API-token
-    # challenge, consistent with the local setup page. CAMELS credentials remain
-    # server-side in the encrypted bridge store.
     @app.get("/dashboard/protocols")
-    def dashboard_protocols(connection_id: str | None = None):
-        protocol_names, connection_ids = protocol_catalog()
+    def dashboard_protocols(connection_id: str | None = None, user=Depends(read_user)):
+        protocol_names, connection_ids = protocol_catalog(user.user_id)
         return {"Protocols": protocol_names, "connection_ids": connection_ids}
 
     @app.get("/dashboard/protocols/{protocol_name}/schema")
-    def dashboard_protocol_schema(protocol_name: str, connection_id: str | None = None):
+    def dashboard_protocol_schema(protocol_name: str, connection_id: str | None = None, user=Depends(read_user)):
         return request_camels(
-            "GET", f"/api/v1/protocols/{protocol_name}/schema", connection=connection_for_protocol(protocol_name)
+            "GET", f"/api/v1/protocols/{protocol_name}/schema", connection=connection_for_protocol(user.user_id, protocol_name)
         )
 
     @app.get("/dashboard/protocols/{protocol_name}/definition")
-    def dashboard_protocol_definition(protocol_name: str, connection_id: str | None = None):
+    def dashboard_protocol_definition(protocol_name: str, connection_id: str | None = None, user=Depends(read_user)):
         return request_camels(
-            "GET", f"/api/v1/protocols/{protocol_name}/JSON", connection=connection_for_protocol(protocol_name)
+            "GET", f"/api/v1/protocols/{protocol_name}/JSON", connection=connection_for_protocol(user.user_id, protocol_name)
         )
 
     @app.put("/dashboard/protocols/{protocol_name}/parameters")
     def dashboard_save_protocol_parameters(
-        protocol_name: str, parameters: ProtocolParameters
+        protocol_name: str, parameters: ProtocolParameters, user=Depends(write_user)
     ):
         """Persist form values as defaults in the selected CAMELS protocol."""
         return request_camels(
             "PUT",
             f"/api/v1/protocols/{quote(protocol_name)}/parameters",
             payload={"variables": parameters.variables},
-            connection=connection_for_protocol(protocol_name),
+            connection=connection_for_protocol(user.user_id, protocol_name),
         )
 
     @app.post("/dashboard/runs")
-    def dashboard_start_run(request: RunRequest):
-        connection_ids = protocol_catalog()[1]
+    def dashboard_start_run(request: RunRequest, user=Depends(write_user)):
+        connection_ids = protocol_catalog(user.user_id)[1]
         response = request_camels(
             "POST",
             f"/api/v1/actions/run/protocols/{request.protocol_name}",
             payload={"variables": request.variables},
-            connection=connection_for_protocol(request.protocol_name),
+            connection=connection_for_protocol(user.user_id, request.protocol_name),
         )
         return {**response, "connection_id": connection_ids[request.protocol_name]}
 
@@ -1032,7 +1039,7 @@ def create_app(
 
         # Check the protocol/key mapping before scheduling the asynchronous
         # workflow, so invalid dashboard requests fail immediately.
-        connection_for_protocol(request.protocol_name)
+        connection_for_protocol(user.user_id, request.protocol_name)
         workflow_id = start_action(
             action_id="nomad_camels_oasis.entry_points:camels_measurement_action",
             data=CAMELSMeasurementInput(
@@ -1054,57 +1061,59 @@ def create_app(
         }
 
     @app.get("/dashboard/runs/{run_id}")
-    def dashboard_run_status(run_id: str, connection_id: str | None = None):
-        return request_camels("GET", f"/api/v1/protocols/results/{run_id}", connection=current_connection(connection_id))
+    def dashboard_run_status(run_id: str, connection_id: str | None = None, user=Depends(read_user)):
+        return request_camels(
+            "GET", f"/api/v1/protocols/results/{run_id}", connection=current_connection(user.user_id, connection_id)
+        )
 
     @app.get("/dashboard/plots")
-    def dashboard_plot_windows(protocol_name: str):
+    def dashboard_plot_windows(protocol_name: str, user=Depends(read_user)):
         """Return the live CAMELS GUI plot-window count for one saved protocol key."""
         return request_camels(
             "GET",
             "/api/v1/gui/plots",
-            connection=connection_for_protocol(protocol_name),
+            connection=connection_for_protocol(user.user_id, protocol_name),
         )
 
     @app.get("/dashboard/plot-caches")
-    def dashboard_plot_caches(protocol_name: str):
+    def dashboard_plot_caches(protocol_name: str, user=Depends(read_user)):
         """Proxy only Qt-independent 1D plot caches from CAMELS."""
         return request_camels(
             "GET",
             "/api/v1/gui/plot-caches",
-            connection=connection_for_protocol(protocol_name),
+            connection=connection_for_protocol(user.user_id, protocol_name),
         )
 
     @app.get("/dashboard/measurement-status")
-    def dashboard_measurement_status(protocol_name: str):
+    def dashboard_measurement_status(protocol_name: str, user=Depends(read_user)):
         """Proxy CAMELS' thread-safe main-window progress snapshot."""
         return request_camels(
             "GET",
             "/api/v1/gui/measurement-status",
-            connection=connection_for_protocol(protocol_name),
+            connection=connection_for_protocol(user.user_id, protocol_name),
         )
 
     @app.post("/dashboard/plots/close")
-    def dashboard_close_plot_windows(protocol_name: str):
+    def dashboard_close_plot_windows(protocol_name: str, user=Depends(write_user)):
         """Request CAMELS to perform its main-window Close plots action."""
         return request_camels(
             "POST",
             "/api/v1/gui/plots/close",
-            connection=connection_for_protocol(protocol_name),
+            connection=connection_for_protocol(user.user_id, protocol_name),
         )
 
     @app.get("/dashboard/pid-plots")
-    def dashboard_pid_plots(protocol_name: str):
+    def dashboard_pid_plots(protocol_name: str, user=Depends(read_user)):
         """Proxy the active PID controller traces for the selected protocol."""
         return request_camels(
             "GET",
             f"/api/v1/gui/pid-plots?protocol_name={quote(protocol_name)}",
-            connection=connection_for_protocol(protocol_name),
+            connection=connection_for_protocol(user.user_id, protocol_name),
         )
 
     @app.get("/health")
-    def health(connection_id: str | None = None):
-        url, _ = current_connection(connection_id)
+    def health(connection_id: str | None = None, user=Depends(read_user)):
+        url, _ = current_connection(user.user_id, connection_id)
         return request_camels(
             "GET",
             "/api/v1/health",
@@ -1113,27 +1122,29 @@ def create_app(
         )
 
     @app.get("/protocols")
-    def list_protocols(_user=Depends(read_user)):
-        return request_camels("GET", "/api/v1/protocols")
+    def list_protocols(user=Depends(read_user)):
+        protocol_names, _ = protocol_catalog(user.user_id)
+        return {"Protocols": protocol_names}
 
     @app.get("/protocols/{protocol_name}/schema")
-    def get_protocol_schema(protocol_name: str, _user=Depends(read_user)):
-        return request_camels("GET", f"/api/v1/protocols/{protocol_name}/schema")
+    def get_protocol_schema(protocol_name: str, user=Depends(read_user)):
+        return request_camels("GET", f"/api/v1/protocols/{protocol_name}/schema", connection=connection_for_protocol(user.user_id, protocol_name))
 
     @app.get("/protocols/{protocol_name}/definition")
-    def get_protocol_definition(protocol_name: str, _user=Depends(read_user)):
-        return request_camels("GET", f"/api/v1/protocols/{protocol_name}/JSON")
+    def get_protocol_definition(protocol_name: str, user=Depends(read_user)):
+        return request_camels("GET", f"/api/v1/protocols/{protocol_name}/JSON", connection=connection_for_protocol(user.user_id, protocol_name))
 
     @app.post("/runs")
-    def start_run(request: RunRequest, _user=Depends(write_user)):
+    def start_run(request: RunRequest, user=Depends(write_user)):
         return request_camels(
             "POST",
             f"/api/v1/actions/run/protocols/{request.protocol_name}",
             payload={"variables": request.variables},
+            connection=connection_for_protocol(user.user_id, request.protocol_name),
         )
 
     @app.get("/runs/{run_id}")
-    def get_run_status(run_id: str, _user=Depends(read_user)):
-        return request_camels("GET", f"/api/v1/protocols/results/{run_id}")
+    def get_run_status(run_id: str, user=Depends(read_user)):
+        return request_camels("GET", f"/api/v1/protocols/results/{run_id}", connection=current_connection(user.user_id))
 
     return app

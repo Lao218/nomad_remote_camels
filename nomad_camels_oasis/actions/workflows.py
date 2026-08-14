@@ -28,12 +28,32 @@ class CAMELSMeasurementWorkflow:
         for _ in range(3600):  # At most two hours at a two-second polling rate.
             status = await workflow.execute_activity(
                 get_camels_run_status,
-                {"protocol_name": data.protocol_name, "run_id": str(run_id)},
+                {
+                    "user_id": data.user_id,
+                    "protocol_name": data.protocol_name,
+                    "run_id": str(run_id),
+                },
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=retry,
             )
-            text = str(status.get("status", status.get("state", ""))).lower()
-            if any(value in text for value in ("finished", "complete", "success", "failed", "error", "abort", "stopped")):
+            raw_status = str(status.get("status", status.get("state", ""))).strip()
+            text = raw_status.lower()
+            # CAMELS replaces its initial "currently running" database value
+            # with the finished HDF5/NeXus file path.  A path is therefore a
+            # successful terminal status, not a status word to keep polling.
+            result_file_path = "/" in raw_status or "\\" in raw_status
+            if result_file_path or any(
+                value in text
+                for value in (
+                    "finished",
+                    "complete",
+                    "success",
+                    "failed",
+                    "error",
+                    "abort",
+                    "stopped",
+                )
+            ):
                 return {"run_id": run_id, "camels_status": status}
             await workflow.sleep(2)
         return {"run_id": run_id, "camels_status": "monitoring timeout"}
