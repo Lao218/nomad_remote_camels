@@ -11,11 +11,11 @@ import uuid
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request as UrlRequest, urlopen
 
 from cryptography.fernet import Fernet, InvalidToken
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from nomad.app.v1.routers.auth import get_current_user
@@ -82,7 +82,7 @@ class CredentialStore:
         os.replace(temporary_path, self._path)
 
 
-SETUP_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>CAMELS connections setup</title><style>body{font-family:Arial,sans-serif;max-width:720px;margin:3rem auto;line-height:1.45}label{display:block;font-weight:600;margin-top:1rem}input{box-sizing:border-box;width:100%;padding:.6rem;margin-top:.3rem}button{padding:.5rem .8rem;margin:.5rem}#saved{list-style:disc;padding-left:1.6rem;margin:.5rem 0}#saved li{display:flex;align-items:center;gap:.5rem;min-height:2.2rem;padding:.2rem .4rem;border-bottom:1px solid #ddd}#saved .delete{float:none;margin:0 0 0 auto;padding:.25rem .55rem;line-height:1.2;white-space:nowrap}pre{white-space:pre-wrap}</style></head><body><h1>CAMELS connections setup</h1><p>Paste a protocol-scoped CAMELS API key. A key for an existing protocol replaces that protocol's saved key; a new protocol is added to the list.</p><form id="form"><label>CAMELS API URL<input id="url" required value="http://host.docker.internal:8000"></label><label>CAMELS API key<input id="key" type="password" required autocomplete="off"></label><button type="button" id="test">Test connection</button><button type="submit">Save connection</button><a href="./dashboard">Go to dashboard</a></form><pre id="result"></pre><h2>Saved protocols</h2><ul id="saved"><li>Loading...</li></ul><script>const result=document.getElementById('result'),form=document.getElementById('form'),saved=document.getElementById('saved');function values(){return{camels_base_url:document.getElementById('url').value,api_key:document.getElementById('key').value}}function show(data,ok=true){result.textContent=(ok?'Success: ':'Error: ')+JSON.stringify(data,null,2)}async function request(path,options={}){const r=await fetch(path,options),data=await r.json();if(!r.ok)throw data;return data}async function refresh(){try{const data=await request('./settings/connections');saved.innerHTML='';const entries=data.connections||[];if(!entries.length){saved.innerHTML='<li>No protocol API keys saved.</li>';return}for(const entry of entries){const li=document.createElement('li');li.textContent=entry.name;const button=document.createElement('button');button.className='delete';button.textContent='Delete';button.onclick=async()=>{if(!confirm('Delete the saved key for '+entry.name+'?'))return;try{await request('./settings/connections/'+encodeURIComponent(entry.connection_id),{method:'DELETE'});refresh()}catch(e){show(e,false)}};li.append(button);saved.append(li)}}catch(e){show(e,false)}}document.getElementById('test').addEventListener('click',async()=>{try{show(await request('./settings/connection/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(values())}))}catch(e){show(e,false)}});form.addEventListener('submit',async e=>{e.preventDefault();try{const data=await request('./settings/connection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(values())});show(data);document.getElementById('key').value='';refresh()}catch(e){show(e,false)}});refresh();</script></body></html>"""
+SETUP_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>CAMELS connections setup</title><style>body{font-family:Arial,sans-serif;max-width:720px;margin:3rem auto;line-height:1.45}label{display:block;font-weight:600;margin-top:1rem}input{box-sizing:border-box;width:100%;padding:.6rem;margin-top:.3rem}button{padding:.5rem .8rem;margin:.5rem}#saved{list-style:disc;padding-left:1.6rem;margin:.5rem 0}#saved li{display:flex;align-items:center;gap:.5rem;min-height:2.2rem;padding:.2rem .4rem;border-bottom:1px solid #ddd}#saved .delete{float:none;margin:0 0 0 auto;padding:.25rem .55rem;line-height:1.2;white-space:nowrap}pre{white-space:pre-wrap}</style></head><body><h1>CAMELS connections setup</h1><p>Paste one CAMELS API key. CAMELS decides which protocols are visible: only protocols with <em>Expose this protocol to OASIS remote control</em> enabled are listed and controllable.</p><form id="form"><label>CAMELS API URL<input id="url" required value="http://host.docker.internal:8000"></label><label>CAMELS API key<input id="key" type="password" required autocomplete="off"></label><button type="button" id="test">Test connection</button><button type="submit">Save connection</button><a href="./dashboard">Go to dashboard</a></form><pre id="result"></pre><h2>Saved CAMELS connections</h2><ul id="saved"><li>Loading...</li></ul><script>const result=document.getElementById('result'),form=document.getElementById('form'),saved=document.getElementById('saved');function values(){return{camels_base_url:document.getElementById('url').value,api_key:document.getElementById('key').value}}function show(data,ok=true){result.textContent=(ok?'Success: ':'Error: ')+JSON.stringify(data,null,2)}async function request(path,options={}){const r=await fetch(path,options),data=await r.json();if(!r.ok)throw data;return data}async function refresh(){try{const data=await request('./settings/connections');saved.innerHTML='';const entries=data.connections||[];if(!entries.length){saved.innerHTML='<li>No CAMELS API key saved.</li>';return}for(const entry of entries){const li=document.createElement('li');li.textContent=entry.name;const button=document.createElement('button');button.className='delete';button.textContent='Delete';button.onclick=async()=>{if(!confirm('Delete the saved CAMELS key for '+entry.name+'?'))return;try{await request('./settings/connections/'+encodeURIComponent(entry.connection_id),{method:'DELETE'});refresh()}catch(e){show(e,false)}};li.append(button);saved.append(li)}}catch(e){show(e,false)}}document.getElementById('test').addEventListener('click',async()=>{try{show(await request('./settings/connection/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(values())}))}catch(e){show(e,false)}});form.addEventListener('submit',async e=>{e.preventDefault();try{const data=await request('./settings/connection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(values())});show(data);document.getElementById('key').value='';refresh()}catch(e){show(e,false)}});refresh();</script></body></html>"""
 
 DASHBOARD_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>CAMELS measurement dashboard</title><style>body{font-family:Arial,sans-serif;max-width:1000px;margin:2rem auto;line-height:1.45}select,input,button{padding:.55rem;margin:.35rem 0}select{min-width:300px}button{margin-left:.4rem}#parameters label{display:block;font-weight:600;margin-top:.7rem}#parameters input{display:block;box-sizing:border-box;width:100%;font-weight:400}pre{background:#f5f5f5;border:1px solid #ddd;padding:1rem;white-space:pre-wrap}.hint{color:#555}</style></head><body><h1>CAMELS measurement dashboard</h1><p><a href="./setup">CAMELS connections setup</a></p><label><strong>Protocol</strong><br><select id="protocol"><option>Loading protocols...</option></select></label><button id="load">View protocol</button><p class="hint">Values below apply only to the next measurement run; they do not overwrite the protocol saved in CAMELS.</p><h2>Measurement parameters</h2><div id="parameters">Choose a protocol, then select View protocol.</div><button id="run" disabled>Start measurement</button><h2>Sequence</h2><pre id="sequence">Choose a protocol to show its configured sequence.</pre><h2>Run status</h2><pre id="status">No measurement has been started.</pre><script>const protocol=document.getElementById('protocol'),params=document.getElementById('parameters'),sequence=document.getElementById('sequence'),status=document.getElementById('status'),run=document.getElementById('run');let timer=null;async function api(path,options={}){const r=await fetch('./dashboard/'+path,options),text=await r.text();let data;try{data=JSON.parse(text)}catch{data={detail:text}}if(!r.ok)throw new Error(data.detail||text);return data}function stepsOf(v){if(Array.isArray(v))return v;if(!v||typeof v!=='object')return[];for(const k of ['loop_steps','sequence','steps','sub_steps','children'])if(Array.isArray(v[k]))return v[k];return[]}function sequenceText(steps,l=0){return steps.map(s=>{if(typeof s==='string')return '  '.repeat(l)+'- '+s;const label=s.name||s.full_name||s.step_type||s.type||s.description||'Step',children=stepsOf(s);return '  '.repeat(l)+'- '+label+(children.length?'\\n'+sequenceText(children,l+1):'')}).join('\\n')}function value(v){if(v&&typeof v==='object'&&'default'in v)v=v.default;return typeof v==='object'?JSON.stringify(v):v??''}async function loadProtocols(){try{const data=await api('protocols');protocol.innerHTML='';for(const n of data.Protocols||[]){const o=document.createElement('option');o.value=o.textContent=n;protocol.append(o)}if(!protocol.options.length)protocol.innerHTML='<option>No saved protocols</option>'}catch(e){protocol.innerHTML='<option>Could not load protocols</option>';status.textContent='Error: '+e.message}}async function viewProtocol(){try{const n=protocol.value,[schema,definition]=await Promise.all([api('protocols/'+encodeURIComponent(n)+'/schema'),api('protocols/'+encodeURIComponent(n)+'/definition')]),defs=schema.parameters||schema.variables||{};params.innerHTML='';for(const[k,v]of Object.entries(defs)){const label=document.createElement('label'),input=document.createElement('input');label.textContent=k;input.name=k;input.value=value(v);label.append(input);params.append(label)}if(!Object.keys(defs).length)params.textContent='This protocol does not declare user parameters.';sequence.textContent=sequenceText(stepsOf(definition))||'No sequence steps configured.';run.disabled=false}catch(e){status.textContent='Error: '+e.message;run.disabled=true}}function variables(){const result={};for(const i of params.querySelectorAll('input')){let v=i.value;try{v=JSON.parse(v)}catch{}result[i.name]=v}return result}function statusInfo(r){const raw=String(r.status||r.state||'').trim(),v=raw.toLowerCase();if(raw.includes('/')||raw.includes('\\\\')||v.includes('finished')||v.includes('complete')||v.includes('success'))return['Finished',true];if(v.includes('queue'))return['Queued',false];if(v.includes('running')||!v)return['Running',false];if(v.includes('failed')||v.includes('error')||v.includes('abort')||v.includes('stopped'))return['Failed',true];return['Running',false]}async function poll(id,connectionId){clearTimeout(timer);try{const r=await api('runs/'+encodeURIComponent(id)+'?connection_id='+encodeURIComponent(connectionId)),[text,done]=statusInfo(r);status.textContent=text;if(done)run.disabled=false;else timer=setTimeout(()=>poll(id,connectionId),1500)}catch(e){status.textContent='Status check failed: '+e.message;run.disabled=false}}async function startRun(){try{run.disabled=true;status.textContent='Starting measurement...';const r=await api('runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({protocol_name:protocol.value,variables:variables()})}),id=r.run_id||r.uuid||r.id;if(id){status.textContent='Running';poll(id,r.connection_id)}else{status.textContent='Started';run.disabled=false}}catch(e){status.textContent='Failed: '+e.message;run.disabled=false}}document.getElementById('load').addEventListener('click',viewProtocol);run.addEventListener('click',startRun);loadProtocols();</script></body></html>"""
 
@@ -152,9 +152,38 @@ protocol.addEventListener('change',refreshPidPlots);const pidRefreshInterval=set
 # GUI v2's dashboard iframe intentionally does not grant ``allow-modals``.
 # Replace the browser-native confirm() used by the setup page with a visible,
 # two-click confirmation that works both embedded and as a standalone page.
+# (The original text explicitly says "CAMELS key".)
 SETUP_PAGE = SETUP_PAGE.replace(
-    "if(!confirm('Delete the saved key for '+entry.name+'?'))return;",
+    "if(!confirm('Delete the saved CAMELS key for '+entry.name+'?'))return;",
     "if(button.dataset.confirming!=='true'){button.dataset.confirming='true';button.textContent='Confirm delete';setTimeout(()=>{button.dataset.confirming='';button.textContent='Delete'},4000);return;}",
+)
+
+# Present the saved CAMELS machines as a table.  The credential itself is never
+# returned to the browser; only non-secret service information is displayed.
+SETUP_PAGE = SETUP_PAGE.replace(
+    '<ul id="saved"><li>Loading...</li></ul>',
+    '<table id="saved-table"><thead><tr><th>Connection</th><th>Host</th><th>Local IPv4</th><th>Port</th><th>Started</th><th>Action</th></tr></thead><tbody id="saved"><tr><td colspan="6">Loading...</td></tr></tbody></table>',
+).replace(
+    'pre{white-space:pre-wrap}',
+    'pre{white-space:pre-wrap}#saved-table{width:100%;border-collapse:collapse;margin:.5rem 0}#saved-table th,#saved-table td{padding:.45rem .5rem;border-bottom:1px solid #ddd;text-align:left;vertical-align:middle}#saved-table th{font-size:.9rem;color:#444}#saved-table .delete{margin:0;padding:.25rem .55rem;line-height:1.2;white-space:nowrap}',
+).replace(
+    "saved.innerHTML='<li>No CAMELS API key saved.</li>';",
+    "saved.innerHTML='<tr><td colspan=\"6\">No CAMELS API key saved.</td></tr>';",
+).replace(
+    "const li=document.createElement('li');",
+    "const li=document.createElement('tr');",
+).replace(
+    "li.textContent=entry.name;",
+    "const info=entry.service_info||{},ips=(info.local_ipv4_addresses||[]).join(', ')||'-',host=info.hostname||'-',port=info.api_port||'-',started=info.started_at?new Date(info.started_at).toLocaleString():'-';for(const text of [entry.name,host,ips,port,started]){const cell=document.createElement('td');cell.textContent=text;li.append(cell);}",
+).replace(
+    "li.append(button);saved.append(li)",
+    "const action=document.createElement('td');action.append(button);li.append(action);saved.append(li)",
+)
+
+# Keep the compact connection form centred inside the GUI v2 dashboard iframe.
+SETUP_PAGE = SETUP_PAGE.replace(
+    "body{font-family:Arial,sans-serif;max-width:720px;margin:3rem auto;line-height:1.45}",
+    "body{font-family:Arial,sans-serif;max-width:720px;margin:3rem auto;min-height:calc(100vh - 6rem);display:flex;flex-direction:column;justify-content:center;line-height:1.45}",
 )
 
 # The two GUI v2 dashboards deliberately have separate responsibilities.
@@ -168,11 +197,11 @@ SETUP_PAGE = SETUP_PAGE.replace(
 # Bulk deletion uses the same visible two-click confirmation pattern as each
 # individual Delete button, which also works inside the GUI v2 iframe.
 SETUP_PAGE = SETUP_PAGE.replace(
-    "<h2>Saved protocols</h2>",
-    '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap"><h2 style="margin:.8rem 0">Saved protocols</h2><button type="button" id="delete-all-protocols" class="delete">Delete all protocols</button></div>',
+    "<h2>Saved CAMELS connections</h2>",
+    '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap"><h2 style="margin:.8rem 0">Saved CAMELS connections</h2><button type="button" id="delete-all-protocols" class="delete">Delete all connections</button></div>',
 ).replace(
     "refresh();</script>",
-    """document.getElementById('delete-all-protocols').onclick=async()=>{const button=document.getElementById('delete-all-protocols');if(button.dataset.confirming!=='true'){button.dataset.confirming='true';button.textContent='Confirm delete all';setTimeout(()=>{button.dataset.confirming='';button.textContent='Delete all protocols'},4000);return;}try{await request('./settings/connections',{method:'DELETE'});button.dataset.confirming='';button.textContent='Delete all protocols';refresh()}catch(e){show(e,false)}};refresh();</script>""",
+    """document.getElementById('delete-all-protocols').onclick=async()=>{const button=document.getElementById('delete-all-protocols');if(button.dataset.confirming!=='true'){button.dataset.confirming='true';button.textContent='Confirm delete all';setTimeout(()=>{button.dataset.confirming='';button.textContent='Delete all connections'},4000);return;}try{await request('./settings/connections',{method:'DELETE'});button.dataset.confirming='';button.textContent='Delete all connections';refresh()}catch(e){show(e,false)}};refresh();</script>""",
 )
 
 # Keep protocol execution close to the protocol-scoped API-key management.  The
@@ -280,7 +309,7 @@ async function saveRemoteParameters(){
   remoteSaveButton.disabled=true;
   remoteRunStatus.textContent='Saving parameters into CAMELS protocol...';
   try{
-    await remoteApi('protocols/'+encodeURIComponent(name)+'/parameters',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({variables:remoteVariables()})});
+    await remoteApi('protocols/'+encodeURIComponent(name)+'/parameters',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({variables:remoteVariables()})});
     // Read the schema back from CAMELS. This is both visual confirmation and
     // a guard against presenting a successful save when CAMELS rejected it.
     const verified=await remoteApi('protocols/'+encodeURIComponent(name)+'/schema');
@@ -361,6 +390,41 @@ SETUP_PAGE = SETUP_PAGE.replace(
 DASHBOARD_PAGE = DASHBOARD_PAGE.replace(
     '<p><a href="./setup">CAMELS connections setup</a></p>',
     '',
+)
+
+# The setup page uses POST for the two destructive operations as requested by
+# this bridge's API contract.  Keeping this replacement here also covers the
+# dynamically inserted bulk-delete handler above.
+SETUP_PAGE = SETUP_PAGE.replace("{method:'DELETE'}", "{method:'POST'}")
+SETUP_PAGE = SETUP_PAGE.replace(
+    "./settings/connections/'+encodeURIComponent(entry.connection_id),{method:'POST'}",
+    "./settings/connections/'+encodeURIComponent(entry.connection_id)+'/delete',{method:'POST'}",
+).replace(
+    "request('./settings/connections',{method:'POST'})",
+    "request('./settings/connections/delete',{method:'POST'})",
+)
+
+# A browser plot lives on the same CAMELS host as its API.  Keep the browser
+# address in the saved OASIS connection and expose only that non-secret address
+# to the authenticated dashboard; the API key never leaves the server.
+DASHBOARD_PAGE = DASHBOARD_PAGE.replace(
+    "status=document.getElementById('status'),run=document.getElementById('run');let timer=null;",
+    "status=document.getElementById('status'),run=document.getElementById('run');let timer=null,protocolConnectionUrls={};",
+).replace(
+    "const data=await api('protocols');protocol.innerHTML='';",
+    "const data=await api('protocols');protocolConnectionUrls=data.connection_base_urls||{};protocol.innerHTML='';",
+).replace(
+    "function plotBaseUrl(port){let base=browserPlotUrlInput.value.trim();",
+    "function updateBrowserPlotUrl(){const apiUrl=protocolConnectionUrls[protocol.value];if(!apiUrl)return;try{const parsed=new URL(apiUrl);browserPlotUrlInput.value=parsed.protocol+'//'+parsed.hostname+':'}catch(error){}}\nfunction plotBaseUrl(port){let base=browserPlotUrlInput.value.trim();",
+).replace(
+    "protocol.addEventListener('change',()=>{browserPlots=[];renderPlotTable();browserPlotFrames.innerHTML=''});",
+    "protocol.addEventListener('change',()=>{updateBrowserPlotUrl();browserPlots=[];renderPlotTable();browserPlotFrames.innerHTML=''});setTimeout(updateBrowserPlotUrl,500);",
+).replace(
+    "function plotUrl(plot){return plotBaseUrl(plot.port)+'/?run='+Date.now()}",
+    "function browserPlotProxyUrl(plot,path=''){return './dashboard/browser-plots/'+encodeURIComponent(protocol.value)+'/'+encodeURIComponent(String(plot.port))+'/'+path}\nfunction plotUrl(plot){return browserPlotProxyUrl(plot)+'?run='+Date.now()}",
+).replace(
+    "async function clearPlot(plot,message){if(message)message.textContent=' Clearing...';try{const response=await fetch(plotBaseUrl(plot.port)+'/clear_data',{method:'POST'});if(!response.ok)throw new Error('CAMELS browser plot returned HTTP '+response.status);if(message)message.textContent=' Cleared'}catch(error){if(message)message.textContent=' Could not clear plot: '+error.message}}",
+    "async function clearPlot(plot,message){if(message)message.textContent=' Clearing...';try{const response=await fetch(browserPlotProxyUrl(plot,'clear_data'),{method:'POST'});if(!response.ok)throw new Error('CAMELS browser plot returned HTTP '+response.status);if(message)message.textContent=' Cleared'}catch(error){if(message)message.textContent=' Could not clear plot: '+error.message}}",
 )
 
 # A CAMELS measurement can briefly make its local API unavailable while the
@@ -478,6 +542,99 @@ DASHBOARD_PAGE += """<script>
 })();
 </script>"""
 
+# Recreate CAMELS Browser Plots from their authenticated /data snapshots.
+# The original Dash application remains local to CAMELS; OASIS receives the
+# same x/y data and protocol plot configuration without proxying Dash's private
+# callback machinery through an iframe.
+DASHBOARD_PAGE += """<script>
+let browserPlotDataTimer=null;
+  let browserPlotlyPromise=null;
+  function ensureBrowserPlotly(){
+    if(window.Plotly)return Promise.resolve(window.Plotly);
+    if(browserPlotlyPromise)return browserPlotlyPromise;
+    browserPlotlyPromise=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://cdn.plot.ly/plotly-2.35.2.min.js';script.onload=()=>resolve(window.Plotly);script.onerror=()=>reject(new Error('Could not load Plotly.'));document.head.append(script)});
+    return browserPlotlyPromise;
+  }
+  function collectBrowserPlots(definition){
+    const found=[];walkForPlots(definition,found);const used=new Set();
+    return found.map((item,index)=>({
+      name:String(item.name||item.title||('Plot '+(index+1))),title:String(item.title||item.name||('Plot '+(index+1))),port:Number(item.browser_port),
+      xName:String(item.x_axis||'time'),yNames:Array.isArray(item.y_axes&&item.y_axes.formula)?item.y_axes.formula.map(String):[],
+      yAxes:Array.isArray(item.y_axes&&item.y_axes.axis)?item.y_axes.axis:[],xlabel:String(item.xlabel||item.x_axis||'time'),
+      ylabel:String(item.ylabel||((item.y_axes&&item.y_axes.formula||[])[0]||'value')),ylabel2:String(item.ylabel2||''),
+      logX:item.logX===true,logY:item.logY===true,logY2:item.logY2===true,
+      enabled:item.checkbox_show_in_browser===true,shown:item.checkbox_show_in_browser===true,clearMode:'automatic'
+    })).filter(item=>Number.isInteger(item.port)&&item.port>0).filter(item=>{const key=plotKey(item);if(used.has(key))return false;used.add(key);return true});
+  }
+  async function updateBrowserPlotFigure(plot,frame,message){
+    try{
+      const response=await fetch(browserPlotProxyUrl(plot,'data'));
+      if(!response.ok)throw new Error('CAMELS browser plot returned HTTP '+response.status);
+      const data=await response.json();
+      const xName=Object.prototype.hasOwnProperty.call(data,plot.xName)?plot.xName:Object.keys(data)[0];
+      const yNames=(plot.yNames||[]).filter(name=>Array.isArray(data[name]));
+      const names=yNames.length?yNames:Object.keys(data).filter(name=>name!==xName&&Array.isArray(data[name]));
+      const traces=names.map((name,index)=>({x:data[xName]||[],y:data[name]||[],name,mode:'markers',marker:{size:10,color:index,opacity:.8},yaxis:(plot.yAxes[index]==='right'||plot.yAxes[index]===2)?'y2':'y'}));
+      // CAMELS Browser Plot stores every completed live fit as fit_* with the
+      // fitted y values and the y trace it belongs to. Use those exact values
+      // instead of performing a second, potentially different fit in OASIS.
+      for(const [fitName,fit] of Object.entries(data)){
+        if(!fitName.startsWith('fit_') || !fit || !Array.isArray(fit.fit_result))continue;
+        const target=String(fit.y_axis_name||''),targetIndex=names.indexOf(target),axisIndex=targetIndex<0?0:targetIndex;
+        const sourceX=data[xName]||[],count=Math.min(sourceX.length,fit.fit_result.length);
+        let fitX=sourceX.slice(-count),fitY=fit.fit_result.slice(-count);
+        if(sourceX.length>1 && fit.fit_result.length!==sourceX.length){const first=Number(sourceX[0]),last=Number(sourceX[sourceX.length-1]);if(Number.isFinite(first)&&Number.isFinite(last))fitX=fit.fit_result.map((_,index)=>first+(last-first)*index/Math.max(1,fit.fit_result.length-1));fitY=fit.fit_result;}
+        traces.push({x:fitX,y:fitY,name:fitName.slice(4),mode:'lines',line:{color:'red',dash:'dash',width:2},yaxis:(plot.yAxes[axisIndex]==='right'||plot.yAxes[axisIndex]===2)?'y2':'y'});
+      }
+      const Plotly=await ensureBrowserPlotly();
+      await Plotly.react(frame,traces,{title:plot.title,xaxis:{title:plot.xlabel,type:plot.logX?'log':'linear'},yaxis:{title:plot.ylabel,type:plot.logY?'log':'linear'},yaxis2:{title:plot.ylabel2,type:plot.logY2?'log':'linear',overlaying:'y',side:'right'},margin:{l:60,r:60,t:50,b:55},uirevision:plotKey(plot)},{responsive:true,displaylogo:false});
+      if(message)message.textContent='';
+    }catch(error){
+      if(message)message.textContent=' Could not load plot data: '+String(error.message||error);
+    }
+  }
+  function renderPlotFrames(){
+    clearInterval(browserPlotDataTimer);browserPlotFrames.innerHTML='';
+    const visible=browserPlots.filter(item=>item.shown);
+    for(const plot of visible){
+      const section=document.createElement('section'),heading=document.createElement('h3'),label=document.createElement('label'),select=document.createElement('select'),manual=document.createElement('button'),message=document.createElement('span'),frame=document.createElement('div');
+      heading.textContent=plot.name+' (port '+plot.port+')';label.textContent='Clear mode ';select.innerHTML='<option value="automatic">Automatic</option><option value="manual">Manual</option>';select.value=plot.clearMode;manual.type='button';manual.textContent='Clear plot';manual.style.display=plot.clearMode==='manual'?'inline-block':'none';message.className='hint';message.style.marginLeft='.5rem';frame.style.cssText='width:100%;height:620px;margin-top:1rem';frame.dataset.browserPlotKey=plotKey(plot);
+      select.addEventListener('change',()=>{plot.clearMode=select.value;manual.style.display=plot.clearMode==='manual'?'inline-block':'none'});
+      manual.addEventListener('click',async()=>{await clearPlot(plot,message);await updateBrowserPlotFigure(plot,frame,message)});
+      label.append(select);section.append(heading,label,manual,message,frame);browserPlotFrames.append(section);updateBrowserPlotFigure(plot,frame,message);
+    }
+    if(visible.length)browserPlotDataTimer=setInterval(()=>{for(const plot of visible){const frame=browserPlotFrames.querySelector('[data-browser-plot-key="'+CSS.escape(plotKey(plot))+'"]');if(frame)updateBrowserPlotFigure(plot,frame,null)}},750);
+  }
+</script>"""
+
+# On first load, prefer the protocol that CAMELS is actively executing.  If no
+# measurement is active, the normal alphabetical first option remains selected.
+DASHBOARD_PAGE += """<script>
+(() => {
+  let activeProtocolSelectionDone=false;
+  async function selectActiveProtocol(){
+    if(activeProtocolSelectionDone || !protocol.options.length)return;
+    const names=[...protocol.options].map(option=>option.value);
+    if(!names.length || /^Loading|^No saved|^Could not load/.test(names[0]))return;
+    try{
+      const active=await api('active-measurement');
+      const name=String(active.protocol_name||'');
+      activeProtocolSelectionDone=true;
+      if(name && names.includes(name) && protocol.value!==name){
+        protocol.value=name;
+        protocol.dispatchEvent(new Event('change'));
+      }
+    }catch(error){
+      // Keep the regular alphabetical selection if CAMELS is temporarily
+      // unavailable while the dashboard first opens.
+      activeProtocolSelectionDone=true;
+    }
+  }
+  new MutationObserver(selectActiveProtocol).observe(protocol,{childList:true});
+  setTimeout(selectActiveProtocol,700);
+})();
+</script>"""
+
 # Mirror the progress bar from the CAMELS main window next to the selected
 # protocol. The data is a plain-Python snapshot served by CAMELS, so this
 # remains safe even while the GUI is executing a measurement.
@@ -564,6 +721,12 @@ DASHBOARD_PAGE += """<script>
     updateStartAvailability();
     startButton.textContent='Creating Action...';
     try{
+      // A new measurement must never inherit points from a previous run.
+      // Clear CAMELS' active Browser Plot caches before submitting the Action,
+      // then clear the local Plotly views immediately as visual feedback.
+      const visiblePlots=(typeof browserPlots==='undefined'?[]:browserPlots.filter(plot=>plot.shown));
+      await Promise.all(visiblePlots.map(plot=>clearPlot(plot,null)));
+      if(typeof renderPlotFrames==='function')renderPlotFrames();
       const values=typeof variables==='function' ? variables() : {};
       const result=await api('actions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({protocol_name:name,variables:values})});
       if(result.workflow_id)pollDashboardAction(result.workflow_id);
@@ -793,6 +956,7 @@ def create_app(
                     "connection_id": connection_id,
                     "name": value.get("name") or connection_id,
                     "camels_base_url": value.get("camels_base_url", default_url),
+                    "service_info": value.get("service_info", {}),
                 }
                 for connection_id, value in connections.items()
             ],
@@ -822,9 +986,18 @@ def create_app(
         return {"connection_id": connection_id, **connection_summary(user_id)}
 
     def save_protocol_connections(
-        user_id: str, settings: ConnectionSettings, protocol_response: dict[str, Any]
+        user_id: str,
+        settings: ConnectionSettings,
+        protocol_response: dict[str, Any],
+        service_info: dict[str, Any],
     ) -> dict[str, Any]:
-        """Store one encrypted credential per protocol, replacing name matches."""
+        """Store one global CAMELS key for all protocols exposed by CAMELS.
+
+        CAMELS is the authority for exposure: its per-protocol
+        ``oasis_remote_control`` checkbox determines what this key can list or
+        control. OASIS stores the credential once instead of duplicating the
+        same secret for every returned protocol.
+        """
         protocol_names = [
             str(name)
             for name in protocol_response.get("Protocols", [])
@@ -836,23 +1009,24 @@ def create_app(
                 detail="The CAMELS API key did not grant access to any protocol.",
             )
         connections, _ = saved_connections(user_id)
-        # A protocol-scoped key is identified by the protocol it can control.
-        # Replacing it never affects credentials for other protocol names.
-        names_to_replace = set(protocol_names)
+        # Replace the prior global key for this CAMELS server. Protocol-scoped
+        # records from older bridge versions remain available for migration.
         connections = {
             connection_id: value
             for connection_id, value in connections.items()
-            if value.get("protocol_name") not in names_to_replace
+            if value.get("protocol_name")
+            or value.get("camels_base_url", "").rstrip("/")
+            != settings.camels_base_url.rstrip("/")
         }
-        for protocol_name in protocol_names:
-            connection_id = uuid.uuid4().hex
-            connections[connection_id] = {
-                "name": protocol_name,
-                "protocol_name": protocol_name,
-                "camels_base_url": settings.camels_base_url.rstrip("/"),
-                "api_key": settings.api_key,
-            }
-        store_user_connections(user_id, connections, next(reversed(connections)))
+        connection_id = uuid.uuid4().hex
+        hostname = str(service_info.get("hostname") or "CAMELS")
+        connections[connection_id] = {
+            "name": f"{hostname} ({settings.camels_base_url.rstrip('/')})",
+            "camels_base_url": settings.camels_base_url.rstrip("/"),
+            "api_key": settings.api_key,
+            "service_info": service_info,
+        }
+        store_user_connections(user_id, connections, connection_id)
         return connection_summary(user_id)
 
     def protocol_catalog(user_id: str) -> tuple[list[str], dict[str, str]]:
@@ -867,6 +1041,8 @@ def create_app(
                     names.append(protocol_name)
                 connection_ids[protocol_name] = connection_id
                 continue
+            # CAMELS lists only the protocols whose "Expose this protocol to
+            # OASIS remote control" checkbox is enabled.
             response = request_camels(
                 "GET",
                 "/api/v1/protocols",
@@ -902,7 +1078,7 @@ def create_app(
         headers = {"Authorization": f"Bearer {key}"} if key else {}
         if body is not None:
             headers["Content-Type"] = "application/json"
-        request = Request(f"{base_url}{path}", data=body, headers=headers, method=method)
+        request = UrlRequest(f"{base_url}{path}", data=body, headers=headers, method=method)
         try:
             with urlopen(request, timeout=timeout_seconds) as response:
                 response_body = response.read()
@@ -935,13 +1111,7 @@ def create_app(
 
     @app.get("/settings/connections")
     def list_connections(user=Depends(read_user)):
-        protocol_names, connection_ids = protocol_catalog(user.user_id)
-        return {
-            "connections": [
-                {"connection_id": connection_ids[name], "name": name}
-                for name in protocol_names
-            ]
-        }
+        return {"connections": connection_summary(user.user_id)["connections"]}
 
     @app.post("/settings/connection/test")
     def test_connection(settings: ConnectionSettings, _user=Depends(write_user)):
@@ -958,13 +1128,25 @@ def create_app(
             "/api/v1/protocols",
             connection=(settings.camels_base_url.rstrip("/"), settings.api_key),
         )
+        try:
+            service_info = request_camels(
+                "GET",
+                "/api/v1/info",
+                connection=(settings.camels_base_url.rstrip("/"), settings.api_key),
+            )
+        except HTTPException as exc:
+            # Existing CAMELS installations can still be linked; after CAMELS
+            # is restarted with the new endpoint, re-saving enriches the card.
+            if exc.status_code != 404:
+                raise
+            service_info = {}
         return {
             "saved": True,
             "protocols": protocols,
-            **save_protocol_connections(user.user_id, settings, protocols),
+            **save_protocol_connections(user.user_id, settings, protocols, service_info),
         }
 
-    @app.delete("/settings/connections/{connection_id}")
+    @app.post("/settings/connections/{connection_id}/delete")
     def delete_connection(connection_id: str, user=Depends(write_user)):
         connections, active_connection_id = saved_connections(user.user_id)
         if connection_id not in connections:
@@ -975,7 +1157,7 @@ def create_app(
         store_user_connections(user.user_id, connections, active_connection_id)
         return connection_summary(user.user_id)
 
-    @app.delete("/settings/connections")
+    @app.post("/settings/connections/delete")
     def delete_all_connections(user=Depends(write_user)):
         """Remove only the current user's encrypted protocol keys."""
         store_user_connections(user.user_id, {}, None)
@@ -992,7 +1174,21 @@ def create_app(
     @app.get("/dashboard/protocols")
     def dashboard_protocols(connection_id: str | None = None, user=Depends(read_user)):
         protocol_names, connection_ids = protocol_catalog(user.user_id)
-        return {"Protocols": protocol_names, "connection_ids": connection_ids}
+        connections, _ = saved_connections(user.user_id)
+        return {
+            "Protocols": protocol_names,
+            "connection_ids": connection_ids,
+            # This is intentionally only the API host address. The browser
+            # needs it to embed a browser plot, while the secret stays in the
+            # encrypted server-side connection record.
+            "connection_base_urls": {
+                name: connections[connection_ids[name]].get(
+                    "camels_base_url", default_url
+                )
+                for name in protocol_names
+                if connection_ids.get(name) in connections
+            },
+        }
 
     @app.get("/dashboard/protocols/{protocol_name}/schema")
     def dashboard_protocol_schema(protocol_name: str, connection_id: str | None = None, user=Depends(read_user)):
@@ -1006,7 +1202,7 @@ def create_app(
             "GET", f"/api/v1/protocols/{protocol_name}/JSON", connection=connection_for_protocol(user.user_id, protocol_name)
         )
 
-    @app.put("/dashboard/protocols/{protocol_name}/parameters")
+    @app.post("/dashboard/protocols/{protocol_name}/parameters")
     def dashboard_save_protocol_parameters(
         protocol_name: str, parameters: ProtocolParameters, user=Depends(write_user)
     ):
@@ -1092,6 +1288,106 @@ def create_app(
             "/api/v1/gui/measurement-status",
             connection=connection_for_protocol(user.user_id, protocol_name),
         )
+
+    @app.api_route(
+        "/dashboard/browser-plots/{protocol_name}/{port}/{plot_path:path}",
+        methods=["GET", "POST"],
+    )
+    async def dashboard_browser_plot_proxy(
+        protocol_name: str,
+        port: int,
+        plot_path: str,
+        request: Request,
+        user=Depends(read_user),
+    ):
+        """Serve a CAMELS localhost Dash plot through two authenticated proxies."""
+        base_url, api_key = connection_for_protocol(user.user_id, protocol_name)
+        remote_path = (
+            f"/api/v1/gui/browser-plots/{quote(protocol_name, safe='')}/"
+            f"{port}/{plot_path.lstrip('/')}"
+        )
+        target = f"{base_url}{remote_path}"
+        if request.url.query:
+            target += "?" + request.url.query
+        headers = {"Authorization": f"Bearer {api_key}"}
+        if content_type := request.headers.get("content-type"):
+            headers["Content-Type"] = content_type
+        body = await request.body()
+        remote_request = UrlRequest(
+            target,
+            data=body if body else None,
+            headers=headers,
+            method=request.method,
+        )
+        try:
+            with urlopen(remote_request, timeout=timeout_seconds) as remote_response:
+                content = remote_response.read()
+                media_type = remote_response.headers.get_content_type()
+                status_code = remote_response.status
+        except HTTPError as error:
+            content = error.read()
+            media_type = error.headers.get_content_type()
+            status_code = error.code
+        except URLError as error:
+            raise HTTPException(
+                status_code=502,
+                detail="CAMELS browser plot service is unavailable.",
+            ) from error
+
+        if media_type == "text/html" and status_code < 400:
+            # Dash emits root-relative component URLs. Rewrite its base and
+            # request prefix so all assets/callbacks remain inside this OASIS
+            # route instead of pointing at the user's localhost.
+            prefix = (
+                request.scope.get("root_path", "").rstrip("/")
+                + f"/dashboard/browser-plots/{quote(protocol_name, safe='')}/{port}"
+            )
+            page = content.decode("utf-8", errors="replace")
+            page = page.replace("<head>", f'<head><base href="{prefix}/">', 1)
+            page = page.replace('src="/', f'src="{prefix}/')
+            page = page.replace('href="/', f'href="{prefix}/')
+            page = page.replace(
+                '"requests_pathname_prefix":"/"',
+                f'"requests_pathname_prefix":"{prefix}/"',
+            )
+            # Dash serializes the default slash as ``\/`` in its JSON config.
+            # Without this variant its renderer requests ``/_dash-layout``
+            # from OASIS' root rather than from the authenticated proxy.
+            page = page.replace(
+                '"requests_pathname_prefix":"\\/"',
+                f'"requests_pathname_prefix":"{prefix}/"',
+            )
+            content = page.encode("utf-8")
+        return Response(content=content, status_code=status_code, media_type=media_type)
+
+    @app.get("/dashboard/active-measurement")
+    def dashboard_active_measurement(user=Depends(read_user)):
+        """Find the currently running exposed protocol, if CAMELS has one."""
+        protocol_names, connection_ids = protocol_catalog(user.user_id)
+        available_protocols = set(protocol_names)
+        checked_connections: set[str] = set()
+        for connection_id in connection_ids.values():
+            if connection_id in checked_connections:
+                continue
+            checked_connections.add(connection_id)
+            try:
+                snapshot = request_camels(
+                    "GET",
+                    "/api/v1/gui/measurement-status",
+                    connection=current_connection(user.user_id, connection_id),
+                )
+            except HTTPException:
+                # One offline CAMELS computer must not prevent the Dashboard
+                # from opening connections that are online.
+                continue
+            status = str(snapshot.get("status", "")).lower()
+            name = str(snapshot.get("protocol_name") or "")
+            if (
+                name in available_protocols
+                and any(word in status for word in ("running", "preparing", "queued"))
+            ):
+                return {"protocol_name": name, "connection_id": connection_id}
+        return {"protocol_name": None}
 
     @app.post("/dashboard/plots/close")
     def dashboard_close_plot_windows(protocol_name: str, user=Depends(write_user)):
