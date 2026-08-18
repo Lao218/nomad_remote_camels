@@ -22,6 +22,39 @@ from nomad.app.v1.routers.auth import get_current_user
 from nomad.auth.scopes import Scope
 
 
+# This is a presentation limit only. The complete, lossless measurement remains
+# in CAMELS/NOMAD; it prevents a long live run from producing unbounded browser
+# responses for every Dashboard refresh.
+BROWSER_PLOT_MAX_POINTS = 2000
+
+
+def _downsample_plot_values(values: list[Any], limit: int = BROWSER_PLOT_MAX_POINTS) -> list[Any]:
+    """Evenly sample a JSON plot array while retaining its endpoints."""
+    if len(values) <= limit:
+        return values
+    return [
+        values[round(index * (len(values) - 1) / (limit - 1))]
+        for index in range(limit)
+    ]
+
+
+def _limit_browser_plot_payload(payload: Any) -> Any:
+    """Bound top-level traces and stored fit traces returned by Dash /data."""
+    if not isinstance(payload, dict):
+        return payload
+    limited: dict[str, Any] = {}
+    for name, value in payload.items():
+        if isinstance(value, list):
+            limited[name] = _downsample_plot_values(value)
+        elif isinstance(value, dict) and isinstance(value.get("fit_result"), list):
+            fit = dict(value)
+            fit["fit_result"] = _downsample_plot_values(fit["fit_result"])
+            limited[name] = fit
+        else:
+            limited[name] = value
+    return limited
+
+
 class RunRequest(BaseModel):
     protocol_name: str = Field(min_length=1)
     variables: dict[str, Any] = Field(default_factory=dict)
@@ -145,7 +178,12 @@ function ensurePlotly(){if(window.Plotly)return Promise.resolve(window.Plotly);i
 function pidPlotId(name){return 'pid-plot-'+name.replace(/[^a-zA-Z0-9_-]/g,'_')}
 function ensurePidFrame(plot){const id=pidPlotId(plot.device_name);let frame=document.getElementById(id);if(frame)return frame;const section=document.createElement('section');section.id=id;const title=document.createElement('h3');title.textContent=plot.device_name+' - '+(plot.title||'PID plot');frame=document.createElement('div');frame.className='pid-plot-frame';frame.style.cssText='width:100%;height:260px;max-height:260px;overflow:hidden;margin-bottom:1rem';section.append(title,frame);pidPlotFrames.append(section);return frame}
 async function refreshPidPlots(){const name=selectedPlotProtocol();if(!name){pidPlotStatus.textContent='Choose a protocol to inspect active PID controllers.';pidPlotFrames.innerHTML='';return}try{const data=await api('pid-plots?protocol_name='+encodeURIComponent(name)),plots=data.pid_plots||[];if(!plots.length){pidPlotStatus.textContent='No active PID controller plot is available for this protocol.';pidPlotFrames.innerHTML='';return}pidPlotStatus.textContent=plots.length+' active PID controller plot(s).';const active=new Set(plots.map(plot=>pidPlotId(plot.device_name)));for(const node of [...pidPlotFrames.children])if(!active.has(node.id))node.remove();const Plotly=await ensurePlotly();for(const plot of plots){const frame=ensurePidFrame(plot),series=plot.series||{},x=plot.x||[];const traces=['current value','setpoint','output','k','i','d'].filter(key=>Array.isArray(series[key])).map(key=>({x,y:series[key],name:key,mode:'lines',line:{width:key==='current value'||key==='setpoint'?3:1},visible:['current value','setpoint'].includes(key)?true:'legendonly',yaxis:['output','k','i','d'].includes(key)?'y2':'y'}));Plotly.react(frame,traces,{margin:{t:20,r:55,b:45,l:55},xaxis:{title:'time (s)'},yaxis:{title:'temperature / value'},yaxis2:{title:'PID values',overlaying:'y',side:'right'},legend:{orientation:'h'}},{responsive:true,displaylogo:false})}}catch(error){pidPlotStatus.textContent='Could not load PID plots: '+error.message}}
-protocol.addEventListener('change',refreshPidPlots);const pidRefreshInterval=setInterval(refreshPidPlots,1000);setTimeout(refreshPidPlots,750);
+protocol.addEventListener('change',refreshPidPlots);
+// Preserve the last PID frame after completion; only poll its live cache while
+// CAMELS reports an active measurement.
+const pidRefreshInterval=setInterval(()=>{if(window.camelsMeasurementRunning)refreshPidPlots()},1500);
+document.addEventListener('camels-measurement-state',()=>{if(window.camelsMeasurementRunning)refreshPidPlots()});
+setTimeout(refreshPidPlots,750);
 </script>"""
 
 
@@ -548,6 +586,10 @@ DASHBOARD_PAGE += """<script>
 # callback machinery through an iframe.
 DASHBOARD_PAGE += """<script>
 let browserPlotDataTimer=null;
+  // Browser plots are snapshots from CAMELS. Bound the browser-side payload;
+  // CAMELS retains the complete raw acquisition data.
+  const BROWSER_PLOT_MAX_POINTS=2000;
+  window.camelsMeasurementRunning=false;
   let browserPlotlyPromise=null;
   function ensureBrowserPlotly(){
     if(window.Plotly)return Promise.resolve(window.Plotly);
@@ -566,6 +608,16 @@ let browserPlotDataTimer=null;
       enabled:item.checkbox_show_in_browser===true,shown:item.checkbox_show_in_browser===true,clearMode:'automatic'
     })).filter(item=>Number.isInteger(item.port)&&item.port>0).filter(item=>{const key=plotKey(item);if(used.has(key))return false;used.add(key);return true});
   }
+  function downsamplePlotValues(xValues,yValues,limit=BROWSER_PLOT_MAX_POINTS){
+    const count=Math.min(Array.isArray(xValues)?xValues.length:0,Array.isArray(yValues)?yValues.length:0);
+    if(count<=limit)return {x:(xValues||[]).slice(0,count),y:(yValues||[]).slice(0,count)};
+    const x=[],y=[];
+    for(let point=0;point<limit;point++){
+      const index=Math.round(point*(count-1)/(limit-1));
+      x.push(xValues[index]);y.push(yValues[index]);
+    }
+    return {x,y};
+  }
   async function updateBrowserPlotFigure(plot,frame,message){
     try{
       const response=await fetch(browserPlotProxyUrl(plot,'data'));
@@ -574,7 +626,7 @@ let browserPlotDataTimer=null;
       const xName=Object.prototype.hasOwnProperty.call(data,plot.xName)?plot.xName:Object.keys(data)[0];
       const yNames=(plot.yNames||[]).filter(name=>Array.isArray(data[name]));
       const names=yNames.length?yNames:Object.keys(data).filter(name=>name!==xName&&Array.isArray(data[name]));
-      const traces=names.map((name,index)=>({x:data[xName]||[],y:data[name]||[],name,mode:'markers',marker:{size:10,color:index,opacity:.8},yaxis:(plot.yAxes[index]==='right'||plot.yAxes[index]===2)?'y2':'y'}));
+      const traces=names.map((name,index)=>{const values=downsamplePlotValues(data[xName]||[],data[name]||[]);return {x:values.x,y:values.y,name,mode:'markers',marker:{size:10,color:index,opacity:.8},yaxis:(plot.yAxes[index]==='right'||plot.yAxes[index]===2)?'y2':'y'}});
       // CAMELS Browser Plot stores every completed live fit as fit_* with the
       // fitted y values and the y trace it belongs to. Use those exact values
       // instead of performing a second, potentially different fit in OASIS.
@@ -584,7 +636,8 @@ let browserPlotDataTimer=null;
         const sourceX=data[xName]||[],count=Math.min(sourceX.length,fit.fit_result.length);
         let fitX=sourceX.slice(-count),fitY=fit.fit_result.slice(-count);
         if(sourceX.length>1 && fit.fit_result.length!==sourceX.length){const first=Number(sourceX[0]),last=Number(sourceX[sourceX.length-1]);if(Number.isFinite(first)&&Number.isFinite(last))fitX=fit.fit_result.map((_,index)=>first+(last-first)*index/Math.max(1,fit.fit_result.length-1));fitY=fit.fit_result;}
-        traces.push({x:fitX,y:fitY,name:fitName.slice(4),mode:'lines',line:{color:'red',dash:'dash',width:2},yaxis:(plot.yAxes[axisIndex]==='right'||plot.yAxes[axisIndex]===2)?'y2':'y'});
+        const values=downsamplePlotValues(fitX,fitY);
+        traces.push({x:values.x,y:values.y,name:fitName.slice(4),mode:'lines',line:{color:'red',dash:'dash',width:2},yaxis:(plot.yAxes[axisIndex]==='right'||plot.yAxes[axisIndex]===2)?'y2':'y'});
       }
       const Plotly=await ensureBrowserPlotly();
       await Plotly.react(frame,traces,{title:plot.title,xaxis:{title:plot.xlabel,type:plot.logX?'log':'linear'},yaxis:{title:plot.ylabel,type:plot.logY?'log':'linear'},yaxis2:{title:plot.ylabel2,type:plot.logY2?'log':'linear',overlaying:'y',side:'right'},margin:{l:60,r:60,t:50,b:55},uirevision:plotKey(plot)},{responsive:true,displaylogo:false});
@@ -603,8 +656,15 @@ let browserPlotDataTimer=null;
       manual.addEventListener('click',async()=>{await clearPlot(plot,message);await updateBrowserPlotFigure(plot,frame,message)});
       label.append(select);section.append(heading,label,manual,message,frame);browserPlotFrames.append(section);updateBrowserPlotFigure(plot,frame,message);
     }
-    if(visible.length)browserPlotDataTimer=setInterval(()=>{for(const plot of visible){const frame=browserPlotFrames.querySelector('[data-browser-plot-key="'+CSS.escape(plotKey(plot))+'"]');if(frame)updateBrowserPlotFigure(plot,frame,null)}},750);
+    if(visible.length)browserPlotDataTimer=setInterval(refreshBrowserPlotFigures,1500);
   }
+  let browserPlotRefreshInFlight=false;
+  async function refreshBrowserPlotFigures(){
+    if(!window.camelsMeasurementRunning || browserPlotRefreshInFlight)return;
+    browserPlotRefreshInFlight=true;
+    try{for(const plot of browserPlots.filter(item=>item.shown)){const frame=[...browserPlotFrames.querySelectorAll('[data-browser-plot-key]')].find(element=>element.dataset.browserPlotKey===plotKey(plot));if(frame)await updateBrowserPlotFigure(plot,frame,null)}}finally{browserPlotRefreshInFlight=false}
+  }
+  document.addEventListener('camels-measurement-state',refreshBrowserPlotFigures);
 </script>"""
 
 # On first load, prefer the protocol that CAMELS is actively executing.  If no
@@ -685,7 +745,15 @@ DASHBOARD_PAGE += """<script>
       const status=String(data.status||'Idle');
       const progress=Math.max(0,Math.min(100,Number(data.progress)||0));
       const normalized=status.toLowerCase();
+      const wasMeasurementRunning=window.camelsMeasurementRunning===true;
       measurementRunning=['running','preparing','queued'].some(word=>normalized.includes(word));
+      window.camelsMeasurementRunning=measurementRunning;
+      // Start snapshot polling immediately when CAMELS enters a run and stop
+      // it as soon as the run reaches a terminal state. The final rendered
+      // Plotly frame intentionally remains visible.
+      if(wasMeasurementRunning!==measurementRunning){
+        document.dispatchEvent(new Event('camels-measurement-state'));
+      }
       const activeProtocol=data.protocol_name ? String(data.protocol_name) : '';
       text.textContent=measurementRunning && activeProtocol
         ? status+' - currently running: '+activeProtocol
@@ -1307,8 +1375,16 @@ def create_app(
             f"{port}/{plot_path.lstrip('/')}"
         )
         target = f"{base_url}{remote_path}"
-        if request.url.query:
-            target += "?" + request.url.query
+        query = request.url.query
+        if plot_path.strip("/") == "data":
+            # Ask CAMELS to downsample before the response crosses the network.
+            query = "&".join(
+                value
+                for value in (query, f"max_points={BROWSER_PLOT_MAX_POINTS}")
+                if value
+            )
+        if query:
+            target += "?" + query
         headers = {"Authorization": f"Bearer {api_key}"}
         if content_type := request.headers.get("content-type"):
             headers["Content-Type"] = content_type
@@ -1333,6 +1409,17 @@ def create_app(
                 status_code=502,
                 detail="CAMELS browser plot service is unavailable.",
             ) from error
+
+        # The Dashboard requests only the Dash /data snapshot. Apply a hard
+        # output bound before it reaches the user's browser. This is defence in
+        # depth in addition to the JavaScript rendering limit.
+        if plot_path.strip("/") == "data" and media_type == "application/json" and status_code < 400:
+            try:
+                content = json.dumps(_limit_browser_plot_payload(json.loads(content))).encode("utf-8")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                # Keep the original response if a third-party plot has a
+                # non-standard /data payload.
+                pass
 
         if media_type == "text/html" and status_code < 400:
             # Dash emits root-relative component URLs. Rewrite its base and
