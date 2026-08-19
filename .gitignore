@@ -169,3 +169,8 @@ tls/
 # The credentials file contains encrypted protocol-scoped API keys.
 .volumes/fs/camels-bridge/settings.json
 .run-logs/
+
+# Local checkout of NOMAD GUI v2 used only to build the experimental custom UI.
+# It remains an independent Git repository and must not be added as 1,000+ files
+# to this OASIS distribution repository.
+/nomad-gui/

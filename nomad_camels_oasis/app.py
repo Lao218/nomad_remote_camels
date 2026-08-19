@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from nomad.app.v1.routers.auth import get_current_user
 from nomad.auth.scopes import Scope
+from nomad_camels_oasis.measurement_dashboard import AUTHENTICATION_REQUIRED_PAGE
 
 
 # This is a presentation limit only. The complete, lossless measurement remains
@@ -971,6 +972,29 @@ def create_app(
         version="1.1.0",
         description="Authenticated proxy from NOMAD Oasis to CAMELS.",
     )
+
+    @app.exception_handler(HTTPException)
+    async def camels_page_authentication_error(request: Request, exc: HTTPException):
+        """Keep redirected GUI v2 pages consistent with the Dashboard lock UI.
+
+        The GUI v2 dashboard initially authenticates its own plugin mount, then
+        redirects to these bridge pages.  A later logout used to produce raw
+        FastAPI JSON here, because this is a separate FastAPI application.
+        """
+        page_path = request.url.path.rstrip("/")
+        if exc.status_code == 401 and page_path.endswith(("/camels/setup", "/camels/dashboard")):
+            return HTMLResponse(
+                AUTHENTICATION_REQUIRED_PAGE,
+                status_code=401,
+                headers=exc.headers,
+            )
+        return Response(
+            content=json.dumps({"detail": exc.detail}),
+            status_code=exc.status_code,
+            media_type="application/json",
+            headers=exc.headers,
+        )
+
     store = CredentialStore(settings_path, encryption_secret)
     default_url = camels_base_url.rstrip("/")
 
@@ -1102,7 +1126,20 @@ def create_app(
         connections, _ = saved_connections(user_id)
         names: list[str] = []
         connection_ids: dict[str, str] = {}
-        for connection_id, value in connections.items():
+        # The current setup stores one CAMELS connection which discovers every
+        # exposed protocol.  Older bridge releases stored protocol-scoped
+        # records as well.  Query current connections first so an obsolete
+        # per-protocol key cannot shadow a newly saved, working connection.
+        ordered_connections = [
+            (connection_id, value)
+            for connection_id, value in connections.items()
+            if not value.get("protocol_name")
+        ] + [
+            (connection_id, value)
+            for connection_id, value in connections.items()
+            if value.get("protocol_name")
+        ]
+        for connection_id, value in ordered_connections:
             protocol_name = value.get("protocol_name")
             if protocol_name:
                 if protocol_name not in connection_ids:
@@ -1276,7 +1313,7 @@ def create_app(
     ):
         """Persist form values as defaults in the selected CAMELS protocol."""
         return request_camels(
-            "PUT",
+            "POST",
             f"/api/v1/protocols/{quote(protocol_name)}/parameters",
             payload={"variables": parameters.variables},
             connection=connection_for_protocol(user.user_id, protocol_name),
