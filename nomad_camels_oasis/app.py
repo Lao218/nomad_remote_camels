@@ -225,6 +225,13 @@ SETUP_PAGE = SETUP_PAGE.replace(
     "body{font-family:Arial,sans-serif;max-width:720px;margin:3rem auto;min-height:calc(100vh - 6rem);display:flex;flex-direction:column;justify-content:center;line-height:1.45}",
 )
 
+# A successful connection with no exposed protocol is a useful state, not an
+# error. Show its actionable message instead of a raw JSON response.
+SETUP_PAGE = SETUP_PAGE.replace(
+    "function show(data,ok=true){result.textContent=(ok?'Success: ':'Error: ')+JSON.stringify(data,null,2)}",
+    "function show(data,ok=true){const message=data&&typeof data==='object'&&data.message?data.message:JSON.stringify(data,null,2);result.textContent=(ok?'Success: ':'Error: ')+message}",
+)
+
 # The two GUI v2 dashboards deliberately have separate responsibilities.
 # Leave connection management in the setup dashboard and open the monitor
 # dashboard in the parent GUI v2 window instead of navigating inside its iframe.
@@ -1095,11 +1102,6 @@ def create_app(
             for name in protocol_response.get("Protocols", [])
             if isinstance(name, str) and name
         ]
-        if not protocol_names:
-            raise HTTPException(
-                status_code=400,
-                detail="The CAMELS API key did not grant access to any protocol.",
-            )
         connections, _ = saved_connections(user_id)
         # Replace the prior global key for this CAMELS server. Protocol-scoped
         # records from older bridge versions remain available for migration.
@@ -1119,7 +1121,15 @@ def create_app(
             "service_info": service_info,
         }
         store_user_connections(user_id, connections, connection_id)
-        return connection_summary(user_id)
+        summary = connection_summary(user_id)
+        summary["message"] = (
+            "Connection saved. This CAMELS connection does not currently expose any protocol. "
+            "Open the protocol in CAMELS and enable 'Expose this protocol to OASIS remote control', then refresh this page."
+            if not protocol_names
+            else f"Connection saved. {len(protocol_names)} exposed protocol(s) are available."
+        )
+        summary["exposed_protocol_count"] = len(protocol_names)
+        return summary
 
     def protocol_catalog(user_id: str) -> tuple[list[str], dict[str, str]]:
         """Return all saved protocol names and the credential that owns each."""
@@ -1245,11 +1255,10 @@ def create_app(
             if exc.status_code != 404:
                 raise
             service_info = {}
-        return {
-            "saved": True,
-            "protocols": protocols,
-            **save_protocol_connections(user.user_id, settings, protocols, service_info),
-        }
+        saved_connection = save_protocol_connections(
+            user.user_id, settings, protocols, service_info
+        )
+        return {"saved": True, "protocols": protocols, **saved_connection}
 
     @app.post("/settings/connections/{connection_id}/delete")
     def delete_connection(connection_id: str, user=Depends(write_user)):
