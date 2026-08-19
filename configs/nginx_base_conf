@@ -38,15 +38,6 @@ location @redirect_to_index {
     proxy_pass http://nomad-app-backend;
 }
 
-# GUI v2 builds the Dashboard catalogue from this endpoint.  Dashboard plugins
-# can be added while the local deployment is running, so this one response must
-# not remain in a browser cache for the default 24 hours.
-location = /nomad-oasis/api/v1/info {
-    proxy_pass http://nomad-app-backend;
-    proxy_hide_header Cache-Control;
-    add_header Cache-Control 'no-store, no-cache, must-revalidate, max-age=0';
-}
-
 location /nomad-oasis/docs/ {
     # This is added to force a redirect (302) when 404 otherwise
     # the assets are not loaded correctly (a broken page rendered)
