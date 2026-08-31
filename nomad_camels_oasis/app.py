@@ -1216,6 +1216,29 @@ def create_app(
     write_user = get_current_user([Scope.ENTRIES_WRITE], allow_anonymous=False)
     read_user = get_current_user([Scope.ENTRIES_READ], allow_anonymous=False)
 
+    @app.post("/logout", status_code=204)
+    def clear_browser_authentication() -> Response:
+        """Clear browser authentication state before GUI v2 leaves for Keycloak.
+
+        This endpoint intentionally requires no user dependency: it must also
+        work when an expired or half-logged-out browser is trying to discard
+        stale state.  It never reads or changes server-side CAMELS connections.
+        """
+        response = Response(status_code=204)
+        response.headers["Clear-Site-Data"] = '"cache", "cookies", "storage"'
+        # Fallback for clients without Clear-Site-Data support. The browser
+        # frontend removes these paths too, covering cookies written by older
+        # GUI versions.
+        for cookie_path in (
+            "/",
+            "/nomad-oasis",
+            "/nomad-oasis/api/v1",
+            "/nomad-oasis/gui",
+            "/nomad-oasis/gui/v2",
+        ):
+            response.delete_cookie("Authorization", path=cookie_path)
+        return response
+
     @app.get("/setup", response_class=HTMLResponse)
     def setup_page(_user=Depends(read_user)):
         return SETUP_PAGE

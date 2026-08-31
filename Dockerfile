@@ -90,6 +90,21 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --extra plugins
 
 
+# Build the locally checked-out GUI v2.  It is deliberately kept outside the
+# Python package: only the generated static files are copied to the final image.
+FROM node:24-bookworm-slim AS gui_builder
+
+WORKDIR /build/nomad-gui
+
+COPY nomad-gui/package.json nomad-gui/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY nomad-gui ./
+RUN npm run postinstall \
+ && npm run build -- --base /prefix-to-replace \
+ && rm -rf infra/src/nomad_gui/apis/static/* \
+ && cp -r build/* infra/src/nomad_gui/apis/static/
+
+
 COPY scripts ./scripts
 
 FROM builder AS docs
@@ -159,6 +174,7 @@ COPY --chown=nomad:${UID} nomad_camels_oasis /app/nomad_camels_oasis
 COPY configs/nomad.yaml nomad.yaml
 COPY pyproject.toml uv.lock /opt/
 COPY --chown=nomad:${UID} --from=docs /app/built_docs /opt/venv/lib/python${PYTHON_VERSION}/site-packages/nomad/app/static/docs
+COPY --chown=nomad:${UID} --from=gui_builder /build/nomad-gui/infra/src/nomad_gui/apis/static/ /opt/venv/lib/python${PYTHON_VERSION}/site-packages/nomad_gui/apis/static/
 
 RUN mkdir -p /app/.volumes/fs \
  && chown -R nomad:${UID} /app \

@@ -1,0 +1,27 @@
+# Keep Docker build contexts small, while including the two source trees needed
+# by the OASIS image and the local GUI v2 build.
+*
+!Dockerfile
+!.git/
+!.git/**
+!pyproject.toml
+!uv.lock
+!configs/
+!configs/**
+!scripts/
+!scripts/**
+!nomad_camels_oasis/
+!nomad_camels_oasis/**
+!nomad-gui/
+!nomad-gui/**
+
+# The GUI checkout is used only as build input. Never send its repository,
+# dependencies, or generated output into the Docker context.
+nomad-gui/.git/
+nomad-gui/node_modules/
+nomad-gui/build/
+nomad-gui/.env
+
+# Credentials and transient local output never belong in an image.
+.volumes/
+.run-logs/
