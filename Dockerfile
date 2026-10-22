@@ -99,6 +99,10 @@ WORKDIR /build/nomad-gui
 COPY nomad-gui/package.json nomad-gui/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY nomad-gui ./
+# Keep the dashboard authentication guard in this repository, not only in the
+# independent, git-ignored local GUI checkout.
+COPY scripts/guard_gui_dashboards.cjs /tmp/guard_gui_dashboards.cjs
+RUN node /tmp/guard_gui_dashboards.cjs /build/nomad-gui
 RUN npm run postinstall \
  && npm run build -- --base /prefix-to-replace \
  && rm -rf infra/src/nomad_gui/apis/static/* \
